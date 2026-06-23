@@ -440,6 +440,10 @@ Route::post('/{lang}/users/forgot-password/', [\App\Http\Controllers\FrontendAut
 Route::get('/{lang}/users/reset-password/{token}', [\App\Http\Controllers\FrontendAuthController::class, 'showResetPassword'])->name('frontend.reset.show')->where('lang', '[a-zA-Z]{2}');
 Route::post('/{lang}/users/reset-password/', [\App\Http\Controllers\FrontendAuthController::class, 'resetPassword'])->name('frontend.reset.update')->where('lang', '[a-zA-Z]{2}');
 
+// Frontend Contact Us
+Route::get('/{lang}/contact-us/', [\App\Http\Controllers\FrontendController::class, 'contactUs'])->name('frontend.contact-us')->where('lang', '[a-zA-Z]{2}');
+Route::post('/{lang}/contact-us/', [\App\Http\Controllers\FrontendController::class, 'submitContactUs'])->name('frontend.contact-us.submit')->where('lang', '[a-zA-Z]{2}');
+
 // Frontend CMS Page (catch-all — must be last)
 Route::get('/{lang}/{slug}', [\App\Http\Controllers\FrontendController::class, 'page'])->name('frontend.page')->where('lang', '[a-zA-Z]{2}');
 

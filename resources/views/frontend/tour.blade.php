@@ -288,8 +288,8 @@
                             </div>
                         </div>
                         <p class="text-amber-50 text-base mb-10 leading-relaxed font-medium">Need immediate assistance or want to talk to a local expert? We're just a call away.</p>
-                        <a href="tel:+962797682220" class="block w-full bg-white text-amber-600 py-5 rounded-2xl text-center text-xl font-black shadow-xl hover:bg-white hover:-translate-y-1.5 transition-all duration-500 ring-2 ring-white hover:ring-white">
-                            <span dir="ltr">+962 7976 82220</span>
+                        <a href="tel:+96277996601" class="block w-full bg-white text-amber-600 py-5 rounded-2xl text-center text-xl font-black shadow-xl hover:bg-white hover:-translate-y-1.5 transition-all duration-500 ring-2 ring-white hover:ring-white">
+                            <span dir="ltr">+962 77996601</span>
                         </a>
                     </div>
                 </div>

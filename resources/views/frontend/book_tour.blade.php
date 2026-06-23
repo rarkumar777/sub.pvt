@@ -327,8 +327,8 @@
                 <h3 class="text-2xl md:text-3xl font-bold mb-2">{{ __('Dedicated Support') }}</h3>
                 <p class="text-gray-400 text-sm">{{ __('Our local travel experts are available around the clock.') }}</p>
             </div>
-            <a href="tel:+962797682220" class="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl text-center text-lg font-bold shadow-lg transition-all hover:-translate-y-0.5">
-                +962 7976 82220
+            <a href="tel:+96277996601" class="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-xl text-center text-lg font-bold shadow-lg transition-all hover:-translate-y-0.5">
+                +962 77996601
             </a>
         </div>
     </div>

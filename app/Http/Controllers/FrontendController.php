@@ -423,4 +423,62 @@ class FrontendController extends Controller
 
         return $content;
     }
+
+    /**
+     * Contact Us page
+     */
+    public function contactUs($lang = 'en')
+    {
+        $data = $this->getCommonData($lang);
+        return view('frontend.contact_us', $data);
+    }
+
+    /**
+     * Handle Contact Us form submission
+     */
+    public function submitContactUs(Request $request, $lang = 'en')
+    {
+        $request->validate([
+            'name'    => 'required|string|max:255',
+            'email'   => 'required|email',
+            'message' => 'required|string',
+        ]);
+
+        $name    = $request->input('name');
+        $email   = $request->input('email');
+        $phone   = $request->input('phone', '');
+        $subject = $request->input('subject', 'Contact Us Message');
+        $message = $request->input('message');
+
+        try {
+            $recipients = [
+                ['email' => 'info@pvt.jo',           'name' => 'PV Travels'],
+                ['email' => 'rarkumar777@gmail.com',  'name' => 'Admin'],
+            ];
+
+            foreach ($recipients as $recipient) {
+                \Illuminate\Support\Facades\Mail::send([], [], function ($m) use ($name, $email, $phone, $subject, $message, $recipient) {
+                    $body  = "<h2 style='color:#f59e0b;'>New Contact Message — PV Travels</h2>";
+                    $body .= "<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;'>";
+                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;width:120px;'>Name:</td><td style='padding:8px;'>{$name}</td></tr>";
+                    $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Email:</td><td style='padding:8px;'><a href='mailto:{$email}'>{$email}</a></td></tr>";
+                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Phone:</td><td style='padding:8px;'>" . ($phone ?: '—') . "</td></tr>";
+                    $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Subject:</td><td style='padding:8px;'>{$subject}</td></tr>";
+                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;vertical-align:top;'>Message:</td><td style='padding:8px;'>{$message}</td></tr>";
+                    $body .= "</table>";
+                    $body .= "<hr style='margin:20px 0;border:none;border-top:1px solid #eee;'>";
+                    $body .= "<p style='color:#999;font-size:12px;'>This message was sent via the PV Travels contact form.</p>";
+
+                    $m->to($recipient['email'], $recipient['name'])
+                      ->subject("Contact: {$subject} — {$name}")
+                      ->html($body);
+                });
+            }
+        } catch (\Exception $e) {
+            \Log::error('Contact form email failed: ' . $e->getMessage());
+        }
+
+        return redirect('/' . $lang . '/contact-us/')
+            ->with('success', 'Thank you! Your message has been sent. We will get back to you soon.');
+    }
 }

@@ -161,39 +161,63 @@
                     <!-- Message with Quill Editor -->
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Message <span class="text-red-400">*</span></label>
-                        <!-- Hidden textarea for form submission -->
-                        <input type="hidden" name="message" id="contact_message_input">
-                        <!-- Quill editor container -->
-                        <div id="quill_editor" style="height: 200px; border-radius: 0.75rem; background:#f9fafb;"></div>
+                        <!-- Actual textarea (hidden, used for form submission) -->
+                        <textarea id="contact_message" name="message" style="display:none;">{{ old('message') }}</textarea>
+                        <!-- Quill editor visible container -->
+                        <div id="quill_editor" style="min-height:200px; border:1px solid #e5e7eb; border-radius:0.75rem; background:#f9fafb; font-size:14px;"></div>
+                        @error('message')
+                            <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                        @enderror
                     </div>
 
-                    <!-- Quill CDN -->
+                    <!-- Quill CSS + JS -->
                     <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
                     <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
                     <script>
-                        var quill = new Quill('#quill_editor', {
-                            theme: 'snow',
-                            placeholder: 'Tell us about your travel plans or how we can assist you...',
-                            modules: {
-                                toolbar: [
-                                    ['bold', 'italic', 'underline'],
-                                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                                    ['link'],
-                                    ['clean']
-                                ]
+                        // Wait for Quill to load
+                        (function initQuill() {
+                            if (typeof Quill === 'undefined') {
+                                setTimeout(initQuill, 100);
+                                return;
                             }
-                        });
 
-                        // On form submit, copy Quill content to hidden input
-                        document.querySelector('form').addEventListener('submit', function(e) {
-                            var content = quill.root.innerHTML;
-                            if (content === '<p><br></p>' || content.trim() === '') {
-                                e.preventDefault();
-                                alert('Please write a message before sending.');
-                                return false;
+                            var quill = new Quill('#quill_editor', {
+                                theme: 'snow',
+                                placeholder: 'Tell us about your travel plans or how we can assist you...',
+                                modules: {
+                                    toolbar: [
+                                        ['bold', 'italic', 'underline'],
+                                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                                        ['link'],
+                                        ['clean']
+                                    ]
+                                }
+                            });
+
+                            // Restore old value if exists
+                            var oldVal = document.getElementById('contact_message').value;
+                            if (oldVal && oldVal.trim() !== '') {
+                                quill.root.innerHTML = oldVal;
                             }
-                            document.getElementById('contact_message_input').value = content;
-                        });
+
+                            // Sync Quill to textarea on every keystroke
+                            quill.on('text-change', function() {
+                                document.getElementById('contact_message').value = quill.root.innerHTML;
+                            });
+
+                            // Final sync on form submit
+                            document.querySelector('form').addEventListener('submit', function(e) {
+                                var content = quill.root.innerHTML;
+                                var text = quill.getText().trim();
+
+                                if (!text || text === '') {
+                                    e.preventDefault();
+                                    alert('Please write a message before sending.');
+                                    return false;
+                                }
+                                document.getElementById('contact_message').value = content;
+                            });
+                        })();
                     </script>
 
                     <!-- Submit -->

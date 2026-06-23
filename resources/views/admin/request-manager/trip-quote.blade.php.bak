@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ $tripRequest->first_name }}'s Trip Quote - Jordan</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+@php
+    $totalPax = ($tripRequest->adults ?? 0) + ($tripRequest->children ?? 0);
+    if($totalPax < 1) $totalPax = 1;
+    $dayCount = ($itinerary && $itinerary->days) ? $itinerary->days->count() : 0;
+    $groupTotal = $itinerary ? ($itinerary->group_total ?? 0) : 0;
+    $ppp = $itinerary ? ($itinerary->price_per_person ?? 0) : 0;
+    $currency = $tripRequest->currency ?? 'USD';
+    $sym = '$'; if($currency=='EUR') $sym='€'; elseif($currency=='JOD') $sym='JOD ';
+    $depDate = $tripRequest->departure_date ? \Carbon\Carbon::parse($tripRequest->departure_date) : null;
+    $retDate = $tripRequest->return_date ? \Carbon\Carbon::parse($tripRequest->return_date) : null;
+    $dateRange = ($depDate && $retDate) ? $depDate->format('d M').' to '.$retDate->format('d M Y') : 'Flexible';
+    $itinTitle = $itinerary ? ($itinerary->title ?: 'Trip to Jordan for '.$dayCount.' '.($dayCount==1?'day':'days')) : 'Your Trip to Jordan';
+    $destination = $itinerary && $itinerary->title ? $itinerary->title : 'Jordan';
+@endphp
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:#fff;color:#333;}
+a{text-decoration:none;}
+
+/* ── Sticky Nav ── */
+.pv-nav{position:sticky;top:0;z-index:50;background:#1a5c45;display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:52px;box-shadow:0 2px 8px rgba(0,0,0,.1);}
+.pv-nav-left{display:flex;align-items:center;gap:28px;height:100%;}
+.pv-nav-brand{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#fff;letter-spacing:.5px;}
+.pv-nav-links{display:flex;align-items:center;gap:0;height:100%;}
+.pv-nav-links a{color:rgba(255,255,255,.7);font-size:14px;font-weight:500;padding:0 18px;height:100%;display:flex;align-items:center;border-bottom:3px solid transparent;transition:all .15s;}
+.pv-nav-links a:hover,.pv-nav-links a.active{color:#fff;border-bottom-color:#e8d48b;}
+.pv-nav-right{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+.pv-nav-price{color:#fff;font-size:15px;font-weight:700;line-height:1.2;}
+.pv-nav-price span{font-size:11px;color:rgba(255,255,255,.5);font-weight:400;margin-left:4px;}
+.pv-nav-detail{color:#e8d48b;font-size:11px;font-weight:600;text-decoration:underline;}
+
+/* ── Quote Header ── */
+.quote-header{max-width:1060px;margin:0 auto;padding:40px 32px 32px;display:flex;gap:40px;align-items:flex-start;}
+.quote-left{flex:1;}
+.quote-left h1{font-family:'Playfair Display',serif;font-size:30px;font-weight:700;font-style:italic;color:#1a1a1a;margin-bottom:16px;line-height:1.25;}
+.quote-left .divider{width:100%;max-width:500px;height:1px;background:#e5e7eb;margin-bottom:16px;}
+.quote-meta{display:flex;align-items:center;gap:20px;flex-wrap:wrap;font-size:13px;color:#555;}
+.quote-meta-item{display:flex;align-items:center;gap:6px;}
+.quote-meta-item i{color:#1a5c45;font-size:12px;}
+
+/* Agent Card */
+.agent-card{background:#f9f8f5;border:1px solid #e5e7eb;border-radius:8px;padding:24px;width:320px;flex-shrink:0;}
+.agent-card-title{font-size:14px;color:#666;margin-bottom:16px;font-weight:500;font-style:italic;}
+.agent-body{display:flex;gap:14px;align-items:flex-start;}
+.agent-avatar{width:64px;height:64px;border-radius:50%;background:#1a5c45;color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;flex-shrink:0;overflow:hidden;}
+.agent-avatar img{width:100%;height:100%;object-fit:cover;}
+.agent-info h4{font-size:16px;font-weight:700;color:#1a1a1a;margin-bottom:2px;}
+.agent-info p{font-size:12px;color:#666;line-height:1.6;margin:0;}
+.agent-info .stars{color:#e8b445;font-size:12px;margin-top:6px;}
+.agent-info .stars span{color:#888;font-size:11px;margin-left:4px;}
+
+/* ── Features Strip ── */
+.features{background:#f5f9f8;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;padding:32px 0;}
+.features-inner{max-width:1060px;margin:0 auto;padding:0 32px;display:grid;grid-template-columns:repeat(3,1fr);gap:32px;}
+.feat{display:flex;gap:14px;align-items:flex-start;}
+.feat-icon{width:40px;height:40px;border-radius:10px;background:#e0f0ec;color:#1a5c45;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.feat h4{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:4px;}
+.feat p{font-size:12px;color:#888;line-height:1.6;}
+
+/* ── Journey Overview ── */
+.journey{max-width:1060px;margin:0 auto;padding:48px 32px;}
+.journey-inner{display:flex;gap:48px;}
+.journey-map{flex:1;border-radius:12px;min-height:400px;position:relative;overflow:hidden;}
+#tripMap{width:100%;height:100%;min-height:400px;border-radius:12px;z-index:1;}
+.map-marker{width:28px;height:28px;border-radius:50%;background:#1a5c45;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);}
+.journey-list{width:320px;flex-shrink:0;}
+.journey-list h3{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1a1a1a;margin-bottom:24px;line-height:1.3;}
+.jday{display:flex;gap:12px;align-items:flex-start;position:relative;padding-bottom:20px;}
+.jday:last-child{padding-bottom:0;}
+.jday::before{content:'';position:absolute;top:16px;left:5px;width:2px;height:calc(100% - 4px);background:#d1d5db;}
+.jday:last-child::before{display:none;}
+.jday-dot{width:12px;height:12px;border-radius:50%;border:3px solid #1a5c45;background:#fff;margin-top:4px;flex-shrink:0;position:relative;z-index:1;}
+.jday-info .lbl{font-size:13px;font-weight:700;color:#1a5c45;}
+.jday-info .dest{font-size:12px;color:#888;display:flex;align-items:center;gap:4px;margin-top:2px;}
+.jday-info .dest i{font-size:10px;color:#aaa;}
+
+/* ── Day by Day Detail (Evaneos Style) ── */
+.dbd{max-width:1060px;margin:0 auto;padding:0 32px 48px;}
+.dbd h2{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#1a1a1a;margin-bottom:32px;}
+
+.day-block{margin-bottom:40px;}
+.day-hero{position:relative;width:100%;height:280px;border-radius:12px;overflow:hidden;margin-bottom:20px;}
+.day-hero img{width:100%;height:100%;object-fit:cover;}
+.day-hero-overlay{position:absolute;bottom:0;left:0;right:0;padding:20px 24px;background:linear-gradient(transparent,rgba(0,0,0,.6));}
+.day-hero-label{font-size:12px;font-weight:700;color:#e8d48b;text-transform:uppercase;letter-spacing:1px;}
+.day-hero-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#fff;margin-top:4px;}
+.day-no-photo{width:100%;height:160px;border-radius:12px;background:#eef2f0;display:flex;align-items:center;justify-content:center;margin-bottom:20px;color:#aaa;}
+
+.day-content{padding:0 8px;}
+.day-loc-badge{display:inline-block;background:#f0f0f0;color:#555;font-size:11px;font-weight:700;padding:4px 12px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;}
+.day-title-text{font-size:18px;font-weight:700;color:#1a5c45;margin-bottom:12px;}
+.day-desc{font-size:14px;color:#555;line-height:1.8;margin-bottom:16px;}
+.day-meals-row{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.day-meal-item{display:flex;align-items:center;gap:6px;font-size:13px;color:#1a5c45;font-weight:600;}
+.day-meal-item i{color:#1a5c45;font-size:12px;}
+
+/* Accommodation card */
+.day-accom-card{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-top:16px;}
+.day-accom-header{font-size:12px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;padding:12px 16px;border-bottom:1px solid #e5e7eb;}
+.day-accom-body{display:flex;gap:16px;padding:16px;align-items:center;}
+.day-accom-thumb{width:80px;height:60px;border-radius:8px;background:#e5e7eb;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:18px;}
+.day-accom-thumb img{width:100%;height:100%;object-fit:cover;}
+.day-accom-name{font-size:14px;font-weight:700;color:#1a1a1a;}
+.day-accom-desc{font-size:12px;color:#888;margin-top:2px;}
+
+/* ── Price Section ── */
+.price-section{max-width:1060px;margin:0 auto;padding:0 32px 48px;}
+.price-section h2{font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:#1a1a1a;margin-bottom:24px;}
+.price-total-box{background:#1a5c45;border-radius:12px;padding:32px;color:#fff;display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;}
+.price-total-box .label{font-size:14px;color:rgba(255,255,255,.7);}
+.price-total-box .amount{font-family:'Playfair Display',serif;font-size:36px;font-weight:700;}
+.price-inc-exc{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:24px;}
+.price-block h4{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.price-block h4 i{color:#1a5c45;}
+.price-block ul{list-style:none;padding:0;}
+.price-block ul li{font-size:13px;color:#555;line-height:1.8;padding-left:16px;position:relative;}
+.price-block ul li::before{content:'•';position:absolute;left:0;color:#1a5c45;font-weight:700;}
+.price-block.excludes ul li::before{color:#c0392b;}
+.price-conditions{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 24px;margin-top:16px;}
+.price-conditions h4{font-size:14px;font-weight:700;color:#1a1a1a;margin-bottom:8px;}
+.price-conditions p{font-size:13px;color:#555;line-height:1.8;}
+
+/* ── Footer ── */
+.footer{background:#1a5c45;padding:40px 24px;text-align:center;}
+.footer .brand{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#fff;margin-bottom:8px;}
+.footer .txt{font-size:12px;color:rgba(255,255,255,.5);line-height:1.6;max-width:600px;margin:0 auto;}
+
+@media(max-width:768px){
+    .quote-header{flex-direction:column;}.agent-card{width:100%;}.features-inner{grid-template-columns:1fr;}
+    .journey-inner{flex-direction:column;}.journey-list{width:100%;}.price-inc-exc{grid-template-columns:1fr;}
+    .day-hero{height:200px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ── STICKY NAV ── -->
+<nav class="pv-nav">
+    <div class="pv-nav-left">
+        <div class="pv-nav-brand">PVT Travels</div>
+        <div class="pv-nav-links">
+            <a href="#quoteSection" class="active">Personalized offer</a>
+            <a href="#dbdSection">Day by day</a>
+        </div>
+    </div>
+    <div class="pv-nav-right">
+        <div class="pv-nav-price">{{ $sym }}{{ number_format($groupTotal, 0) }} <span>total</span></div>
+        <a href="#pricingSection" class="pv-nav-detail">View details</a>
+    </div>
+</nav>
+
+<!-- ── QUOTE HEADER ── -->
+<div class="quote-header" id="quoteSection">
+    <div class="quote-left">
+        <h1>{{ $itinTitle }}</h1>
+        <div class="divider"></div>
+        <div class="quote-meta">
+            <div class="quote-meta-item"><i class="fa fa-calendar-o"></i> {{ $dateRange }}</div>
+            <div class="quote-meta-item"><i class="fa fa-user-o"></i> {{ $totalPax }} {{ $totalPax > 1 ? 'travellers' : 'traveller' }}</div>
+            <div class="quote-meta-item"><i class="fa fa-folder-o"></i> Reference Dossier {{ $tripRequest->id }}</div>
+        </div>
+    </div>
+    <div class="agent-card">
+        <div class="agent-card-title">Your local agent</div>
+        <div class="agent-body">
+            <div class="agent-avatar">{{ strtoupper(substr($user->name ?? 'A', 0, 1)) }}</div>
+            <div class="agent-info">
+                <h4>{{ $user->name ?? 'Admin' }}</h4>
+                <p>Travel expert in Jordan<br>PV Travels<br>Tel: {{ $tripRequest->phone ?: '+962777767938' }}</p>
+                <div class="stars">
+                    <i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star"></i><i class="fa fa-star-half-o"></i>
+                    <span>reviews</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── FEATURES ── -->
+<div class="features">
+    <div class="features-inner">
+        <div class="feat">
+            <div class="feat-icon"><i class="fa fa-users"></i></div>
+            <div>
+                <h4>Local destination experts</h4>
+                <p>Co-create a tailor-made itinerary. Travel with confidence: you have a local contact on the ground.</p>
+            </div>
+        </div>
+        <div class="feat">
+            <div class="feat-icon"><i class="fa fa-diamond"></i></div>
+            <div>
+                <h4>Memorable experiences</h4>
+                <p>For a trip you couldn't have done by yourselves.</p>
+            </div>
+        </div>
+        <div class="feat">
+            <div class="feat-icon"><i class="fa fa-leaf"></i></div>
+            <div>
+                <h4>Local & responsible explorations</h4>
+                <p>More sustainable for the destination, those who travel and those who live there.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if($itinerary && $dayCount > 0)
+<!-- ── JOURNEY OVERVIEW ── -->
+<div class="journey">
+    <div class="journey-inner">
+        <div class="journey-map">
+            <div id="tripMap"></div>
+        </div>
+        <div class="journey-list">
+            <h3>The key stages of my trip</h3>
+            @foreach($itinerary->days->sortBy('day_number') as $day)
+            <div class="jday">
+                <div class="jday-dot"></div>
+                <div class="jday-info">
+                    <div class="lbl">Day {{ $day->day_number }}</div>
+                    <div class="dest"><i class="fa fa-map-marker"></i> {{ strtoupper($day->destinations ?: 'JORDAN') }}</div>
+                </div>
+            </div>
+            @endforeach
+        </div>
+    </div>
+</div>
+
+<!-- ── DAY BY DAY ── -->
+<div class="dbd" id="dbdSection">
+    <h2>Day by day</h2>
+    @foreach($itinerary->days->sortBy('day_number') as $day)
+    @php
+        $photos = $day->photos;
+        if(is_string($photos)) $photos = json_decode($photos, true);
+        $heroPhoto = (is_array($photos) && count($photos) > 0) ? $photos[0] : null;
+    @endphp
+    <div class="day-block">
+        {{-- Hero image with overlay --}}
+        @if($heroPhoto)
+        <div class="day-hero">
+            <img src="{{ $heroPhoto }}" alt="Day {{ $day->day_number }}">
+            <div class="day-hero-overlay">
+                <div class="day-hero-label">Day {{ $day->day_number }}</div>
+                <div class="day-hero-title">{{ $day->title ?: 'Day '.$day->day_number }}</div>
+            </div>
+        </div>
+        @else
+        <div class="day-no-photo">
+            <div style="text-align:center">
+                <i class="fa fa-image" style="font-size:32px;opacity:.4;display:block;margin-bottom:4px;"></i>
+                <div style="font-size:12px;">Day {{ $day->day_number }}</div>
+            </div>
+        </div>
+        @endif
+
+        <div class="day-content">
+            {{-- Location badge --}}
+            @if($day->destinations)
+            <div class="day-loc-badge"><i class="fa fa-map-marker"></i> {{ strtoupper($day->destinations) }}</div>
+            @endif
+
+            {{-- Day title --}}
+            <div class="day-title-text">{{ $day->title ?: 'Day '.$day->day_number }}</div>
+
+            {{-- Description --}}
+            @if($day->description)
+            <div class="day-desc">{!! nl2br(e($day->description)) !!}</div>
+            @endif
+
+            {{-- Extra photos --}}
+            @if($photos && count($photos) > 1)
+            <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                @foreach(array_slice($photos, 1) as $photo)
+                <img src="{{ $photo }}" style="width:140px;height:95px;border-radius:8px;object-fit:cover;" alt="">
+                @endforeach
+            </div>
+            @endif
+
+            {{-- Meals --}}
+            @php $meals = []; if($day->breakfast) $meals[]='Breakfast'; if($day->lunch) $meals[]='Lunch'; if($day->dinner) $meals[]='Dinner'; @endphp
+            @if(count($meals) > 0)
+            <div class="day-meals-row">
+                @foreach($meals as $m)
+                <div class="day-meal-item"><i class="fa fa-check"></i> {{ $m }}</div>
+                @endforeach
+            </div>
+            @endif
+
+            {{-- Accommodation card --}}
+            @if($day->accommodation_name)
+            <div class="day-accom-card">
+                <div class="day-accom-header">Accommodation</div>
+                <div class="day-accom-body">
+                    <div class="day-accom-thumb"><i class="fa fa-bed"></i></div>
+                    <div>
+                        <div class="day-accom-name">{{ $day->accommodation_name }}</div>
+                        @if($day->accommodation_category)<div class="day-accom-desc">{{ $day->accommodation_category }}</div>@endif
+                        @if($day->accommodation_description)<div class="day-accom-desc">{{ $day->accommodation_description }}</div>@endif
+                    </div>
+                </div>
+            </div>
+            @endif
+        </div>
+    </div>
+    @endforeach
+</div>
+@else
+<div style="max-width:1060px;margin:0 auto;padding:60px 32px;text-align:center;color:#aaa;">
+    <i class="fa fa-plane" style="font-size:48px;opacity:.3;display:block;margin-bottom:12px;"></i>
+    <p style="font-size:15px;">No itinerary days created yet.</p>
+</div>
+@endif
+
+<!-- ── PRICING ── -->
+<div class="price-section" id="pricingSection">
+    @if($itinerary)
+    <h2>Pricing</h2>
+
+    {{-- Total price box --}}
+    <div class="price-total-box">
+        <div class="label">Total price including all taxes</div>
+        <div class="amount">{{ $sym }}{{ number_format($groupTotal, 2) }}</div>
+    </div>
+
+    {{-- Includes / Excludes --}}
+    <div class="price-inc-exc">
+        <div class="price-block includes">
+            <h4><i class="fa fa-check-circle"></i> This price includes</h4>
+            <ul>
+                @if($itinerary->price_includes)
+                    @foreach(explode("\n", $itinerary->price_includes) as $line)
+                        @if(trim($line))<li>{{ trim($line) }}</li>@endif
+                    @endforeach
+                @else
+                    <li>Assistance and transfers</li>
+                    <li>Accommodation as described</li>
+                    <li>Meals as mentioned</li>
+                    <li>Local transport</li>
+                    <li>Guide services</li>
+                @endif
+            </ul>
+        </div>
+        <div class="price-block excludes">
+            <h4><i class="fa fa-times-circle"></i> The price does not include</h4>
+            <ul>
+                @if($itinerary->price_excludes)
+                    @foreach(explode("\n", $itinerary->price_excludes) as $line)
+                        @if(trim($line))<li>{{ trim($line) }}</li>@endif
+                    @endforeach
+                @else
+                    <li>International flights</li>
+                    <li>Entry fees to sites</li>
+                    <li>Travel insurance</li>
+                    <li>Personal expenses</li>
+                    <li>Tips and gratuities</li>
+                @endif
+            </ul>
+        </div>
+    </div>
+
+    {{-- Nights included --}}
+    @if($itinerary->nights_included)
+    <div class="price-conditions" style="margin-bottom:16px;">
+        <h4><i class="fa fa-moon-o" style="color:#1a5c45;"></i> Nights included in the price</h4>
+        <p>{{ $itinerary->nights_included }}</p>
+    </div>
+    @endif
+
+    {{-- Terms and conditions --}}
+    @if($itinerary->payment_conditions || $itinerary->booking_conditions)
+    <div class="price-conditions" style="margin-bottom:16px;">
+        <h4>Terms and conditions</h4>
+        @if($itinerary->payment_conditions)
+        <p style="margin-bottom:8px;"><strong>Payment conditions:</strong> {{ $itinerary->payment_conditions }}</p>
+        @endif
+        @if($itinerary->booking_conditions)
+        <p><strong>Cancellation conditions:</strong> {!! nl2br(e($itinerary->booking_conditions)) !!}</p>
+        @endif
+    </div>
+    @endif
+
+    {{-- Passports and insurance --}}
+    @if($itinerary->passports_visas || $itinerary->travel_insurance)
+    <div class="price-conditions">
+        <h4>Passports and insurance</h4>
+        @if($itinerary->passports_visas)
+        <p style="margin-bottom:8px;"><strong>Passports and visas:</strong> {{ $itinerary->passports_visas }}</p>
+        @endif
+        @if($itinerary->travel_insurance)
+        <p><strong>Travel insurance:</strong> {{ $itinerary->travel_insurance }}</p>
+        @endif
+    </div>
+    @endif
+    @endif
+</div>
+
+<!-- ── FOOTER ── -->
+<div class="footer">
+    <div class="brand">PVT Travels</div>
+    <div class="txt">Tailor-made trips to Jordan. Hotel classifications correspond to local standards. Please note that accommodation may be subject to change depending on availability.<br>© {{ date('Y') }} PV Travels. All rights reserved.</div>
+</div>
+
+<script>
+document.querySelectorAll('.pv-nav-links a').forEach(function(a){
+    a.addEventListener('click',function(e){
+        document.querySelectorAll('.pv-nav-links a').forEach(function(x){x.classList.remove('active');});
+        this.classList.add('active');
+    });
+});
+
+// ── Interactive Map ──
+var knownCoords = {
+    'amman': [31.9454, 35.9284], 'jordan': [31.5, 36.0], 'petra': [30.3285, 35.4444],
+    'wadi rum': [29.5321, 35.4110], 'dead sea': [31.5000, 35.4732], 'aqaba': [29.5267, 35.0078],
+    'madaba': [31.7178, 35.7936], 'jerash': [32.2747, 35.8961], 'mount nebo': [31.7670, 35.7253],
+    'karak': [31.1851, 35.7047], 'dana': [30.6296, 35.6271], 'ajloun': [32.3326, 35.7525],
+    'irbid': [32.5568, 35.8469], 'kerak': [31.1851, 35.7047], 'salt': [32.0392, 35.7272],
+    'azraq': [31.8314, 36.8271], 'um qais': [32.6530, 35.6830], 'umm qais': [32.6530, 35.6830],
+    'wadi mujib': [31.4641, 35.5754], 'bethany': [31.8372, 35.5493], 'shobak': [30.5294, 35.5649],
+    'ma\'in': [31.6103, 35.6336], 'main hot springs': [31.6103, 35.6336]
+};
+
+function findCoords(dest) {
+    if (!dest) return null;
+    var d = dest.toLowerCase().trim();
+    for (var k in knownCoords) {
+        if (d.indexOf(k) >= 0) return knownCoords[k];
+    }
+    return null;
+}
+
+var mapEl = document.getElementById('tripMap');
+if (mapEl) {
+    var map = L.map('tripMap', { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 18
+    }).addTo(map);
+
+    var dayStops = [
+        @if($itinerary && $itinerary->days)
+        @foreach($itinerary->days->sortBy('day_number') as $day)
+        { day: {{ $day->day_number }}, dest: '{{ addslashes($day->destinations ?: 'Jordan') }}' },
+        @endforeach
+        @endif
+    ];
+
+    var markers = [];
+    var latlngs = [];
+    var bounds = [];
+
+    dayStops.forEach(function(s) {
+        var c = findCoords(s.dest);
+        if (!c) {
+            // Add slight offset from Jordan center for unknown destinations
+            c = [31.5 + (Math.random() - 0.5) * 0.5, 36.0 + (Math.random() - 0.5) * 0.5];
+        }
+        var icon = L.divIcon({
+            className: '',
+            html: '<div class="map-marker">' + s.day + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+        });
+        var m = L.marker(c, { icon: icon }).addTo(map);
+        m.bindPopup('<strong>Day ' + s.day + '</strong><br>' + s.dest);
+        markers.push(m);
+        latlngs.push(c);
+        bounds.push(c);
+    });
+
+    if (latlngs.length > 1) {
+        L.polyline(latlngs, { color: '#1a5c45', weight: 3, opacity: 0.7, dashArray: '8 6' }).addTo(map);
+    }
+
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [40, 40] });
+    } else {
+        map.setView([31.5, 36.0], 7);
+    }
+}
+</script>
+</body>
+</html>

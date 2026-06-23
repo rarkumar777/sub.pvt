@@ -1,0 +1,1 @@
+<?php if (!defined('gogies')){ exit;} $GOGIES['mod_names']=array('tours'=>'Reiseveranstalter','store'=>'Shop','tour_calculator'=>'Touren Rechner','media_galleries'=>'Medien Galerie ','accommodation'=>'Unterkunft', ); ?>

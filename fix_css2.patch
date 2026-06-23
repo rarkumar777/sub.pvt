@@ -1,0 +1,34 @@
+--- resources/views/frontend/page.blade.php
++++ resources/views/frontend/page.blade.php
+@@ -10,7 +10,7 @@
+     .body-wrap .pad .row {
+         display: flex !important;
+         flex-wrap: wrap !important;
+-        gap: 30px !important;
++        gap: 24px !important;
+     }
+     /* Prevent clearfix pseudo-elements from becoming empty flex items that take up grid space */
+     .body-wrap .pad .row::before,
+@@ -21,9 +21,19 @@
+         display: flex !important;
+         flex-direction: column !important;
+         float: none !important;
+-        width: calc(33.333% - 20px) !important;
++        width: 100% !important;
+         margin: 0 !important;
+         padding: 0 !important;
++    }
++    @media (min-width: 768px) {
++        .body-wrap .pad .md-4,
++        .body-wrap .pad .bd-3 {
++            width: calc(50% - 12px) !important;
++        }
++    }
++    @media (min-width: 1024px) {
++        .body-wrap .pad .md-4,
++        .body-wrap .pad .bd-3 {
++            width: calc(33.333% - 16px) !important;
++        }
+     }
+     .body-wrap .pad .white.shadow-box {
+         display: flex !important;

@@ -1,0 +1,33 @@
+.required input{background:url(../images/required.png) no-repeat right ; padding-right:12px; }
+.required .datepicker { background: url(../images/calendar-required.png) no-repeat right center #fff; padding-right:29px; }
+
+.loader{ position:fixed; text-align:center; width:100%; height:100%; top:0; left:0; background-color:rgba(0,0,0,0.70); z-index:9999; vertical-align:middle; display: table;}
+.loader span{display:table-cell; vertical-align:middle;}
+.loader i{ color:#fff;}
+.redirect{ width:100%; position: relative; top:0; left:0; height:100%; text-align:center; background:#444; color:#eee; padding-top:20px;}
+.list-group{ list-style:none; border:1px solid #ccc; padding:0;}
+.list-group li { padding:9px 5px; border-bottom:1px solid #ccc;}
+.list-group li a{display:block;}
+.rating { color:#ccc; white-space:nowrap; text-shadow:#555 0px 0px 1px;}.rating i { margin-right:2px;}
+.rating .active{ color:#FFCC00; }
+.body-wrap{ width:100%; max-width:1200px; margin:auto;  }
+
+.admin.navbar  .brand {padding: 0 !important; margin-top:4px; margin-left:4px; }
+.icon-list{height:200px; width:100%; overflow:auto;}
+.icon-list li{ font-size: 11px; text-align:center; padding: 3px; margin: 3px; border: 1px solid #ccc; float: left; background-color: #eee;}
+.icon-list li i {font-size:22px;}
+@media (min-width:768px) {
+
+    .nav-menu li a {
+	  color:inherit;
+	  padding:0.9em;
+	  text-decoration: none;}
+    }
+    #vertical-images #images {
+         display: block;
+        width:240px; max-width:100%; margin:auto;max-height:480px; height:480px; overflow-y:scroll;
+    }
+    input:-moz-read-only { /* For Firefox */
+  background-color:#ddd;
+}
+

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head><title>Frame Extractor</title></head>
+<body>
+<video id="v" src="ref8.mp4" style="width:800px" controls></video>
+<br>
+<canvas id="c" style="display:none"></canvas>
+<div id="frames" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:10px"></div>
+<script>
+const v = document.getElementById('v');
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+const framesDiv = document.getElementById('frames');
+v.addEventListener('loadedmetadata', () => {
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    document.title = `Duration: ${v.duration.toFixed(1)}s, ${v.videoWidth}x${v.videoHeight}`;
+    // Extract frames every 2 seconds
+    let times = [];
+    for(let t=0; t<v.duration; t+=2) times.push(t);
+    let idx = 0;
+    function nextFrame() {
+        if(idx >= times.length) { document.title = `Done - ${idx} frames`; return; }
+        v.currentTime = times[idx];
+    }
+    v.addEventListener('seeked', () => {
+        ctx.drawImage(v, 0, 0);
+        let img = document.createElement('img');
+        img.src = c.toDataURL('image/jpeg', 0.8);
+        img.style.width = '300px';
+        img.title = `t=${times[idx].toFixed(1)}s`;
+        framesDiv.appendChild(img);
+        idx++;
+        nextFrame();
+    });
+    nextFrame();
+});
+</script>
+</body>
+</html>

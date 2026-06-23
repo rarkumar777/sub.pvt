@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PVT - Trip Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/trip-planner.css?v=1777986313">
+<script src="https://cdn.tailwindcss.com"></script>
+<meta name="csrf-token" content="">
+</head>
+<body>
+
+<div class="tp-navbar">
+    <div class="tp-logo">
+        <i class="fa fa-bars"></i>
+        <img src="/Pvtnew1.png" alt="PVT" style="height:30px;margin-right:4px;" onerror="this.style.display='none'">
+        <h1>Trip Planner</h1>
+    </div>
+    <div class="tp-nav-right">
+        <a href="#">Share an idea</a>
+        <a href="#">Help center</a>
+        <div class="tp-avatar">A</div>
+    </div>
+</div>
+
+<div class="tp-main">
+
+<div class="tp-landing" id="tpLanding" style="display:none">
+    <div class="tp-landing-card">
+        
+        <div style="position:relative;height:180px;background:url('/uploads/filemanager/Photos/Petra/Kahzneh.jpg') center/cover no-repeat;border-radius:12px 12px 0 0;overflow:hidden;">
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.7),rgba(0,0,0,0.1));"></div>
+            <div style="position:absolute;bottom:20px;left:24px;color:#fff;">
+                <div style="font-size:28px;font-weight:800;">$100 - $700</div>
+                <div style="font-size:13px;opacity:0.85;margin-top:4px;">1 days &nbsp; 1 travelers</div>
+            </div>
+        </div>
+
+        
+                <div class="tp-section-block">
+            <div class="tp-row-between">
+                <div><h4>Copied Quote (Copy) (Copy) (Copy) (Copy)</h4></div>
+                <button class="btn-green" onclick="openEditor()" style="background:#008767;color:#fff;border:none;padding:10px 24px;border-radius:6px;font-weight:700;font-size:13px;cursor:pointer;">Continue with this version</button>
+            </div>
+        </div>
+        
+        
+        <div class="tp-section-block">
+            <div class="tp-row-between">
+                <div>
+                    <h4>Start from an old quote</h4>
+                    <p>You can start from a quote that was previously shared with another traveller.</p>
+                </div>
+                <button class="btn-outline" onclick="openPreviousQuotes()">Select a quote</button>
+            </div>
+        </div>
+
+        
+        <div class="tp-section-block">
+            <div class="tp-row-between">
+                <div>
+                    <h4>Create a new quote</h4>
+                    <p>You can create a new quote (empty).</p>
+                </div>
+                <button class="btn-outline" onclick="openEditor()">Start</button>
+            </div>
+        </div>
+
+        
+        <div class="tp-section-block">
+            <a href="#" class="tp-link">Manage your library</a>
+            <div style="margin-top:12px">
+                <div class="tp-row-between">
+                    <div>
+                        <h4>What is the purpose of the library?</h4>
+                        <p>The library allows you to create cards for your days, activities, accommodation and transport. Each card is reusable and customizable for each quote.</p>
+                    </div>
+                    <button class="btn-outline">Manage your library</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div style="margin-top:24px;text-align:center;">
+        <a href="/admin/request-manager/8" style="color:#008767;font-size:13px;font-weight:600;text-decoration:none;"><i class="fa fa-arrow-left"></i> Back to Request Manager</a>
+    </div>
+</div>
+
+
+<div class="tp-previous-quotes" id="tpPreviousQuotes" style="display:none; padding:40px; background:#fff; min-height:calc(100vh - 60px);">
+    <div style="max-width:1200px; margin:0 auto;">
+        <h2 style="font-size:24px; font-weight:800; color:#1a1a1a; margin-bottom:24px;">List of previous quotes</h2>
+        
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:16px; margin-bottom:24px;">
+            <div style="display:flex; gap:16px; margin-bottom:16px;">
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option>fr</option><option>en</option></select>
+                    <label class="fl-label">Quote's language</label>
+                </div>
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option></option></select>
+                    <label class="fl-label">Destination / Region</label>
+                </div>
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option></option></select>
+                    <label class="fl-label">Route duration</label>
+                </div>
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option></option></select>
+                    <label class="fl-label">POI / Cities</label>
+                </div>
+            </div>
+            <div style="display:flex; gap:16px; align-items:flex-end;">
+                <div class="fl-group" style="margin:0; flex:2; position:relative;">
+                    <i class="fa fa-search" style="position:absolute; left:12px; top:12px; color:#94a3b8;"></i>
+                    <input class="fl-input" style="padding:10px 10px 10px 36px;" placeholder=" ">
+                    <label class="fl-label" style="left:36px;">Itinerary name</label>
+                </div>
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option></option></select>
+                    <label class="fl-label">Traveller name / File number</label>
+                </div>
+                <div class="fl-group" style="margin:0; flex:1">
+                    <select class="fl-input" style="padding:10px;"><option></option></select>
+                    <label class="fl-label">Itinerary version name</label>
+                </div>
+                <button style="background:none; border:none; color:#1a1a1a; font-weight:600; cursor:pointer; padding:10px; font-size:14px;">Delete filters</button>
+            </div>
+        </div>
+
+        <div style="text-align:right; font-size:12px; color:#64748b; margin-bottom:12px;">5 results found</div>
+
+        <div style="background:#fafaf8; border-radius:8px; overflow:hidden;">
+            <div style="display:flex; padding:12px 24px; font-size:12px; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0;">
+                <div style="flex:3; padding-left:48px;">Itinerary</div>
+                <div style="flex:1">Destination</div>
+                <div style="flex:1">Duration</div>
+                <div style="flex:1">Departure date</div>
+                <div style="flex:1">Shared on</div>
+                <div style="width:100px;"></div>
+            </div>                                    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:16px 24px; display:flex; align-items:center;" class="quote-row">
+                <div style="width:24px; color:#64748b; cursor:pointer;" class="chevron-toggle" onclick="toggleQuoteRow(this)"><i class="fa fa-chevron-down"></i></div>
+                <div style="width:24px; color:#008767;"><i class="fa fa-star-o"></i></div>
+                <div style="flex:3; display:flex; align-items:center; gap:12px;">
+                    <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+                    <span style="font-weight:700; color:#1a1a1a; font-size:14px;">Copied Quote (Copy) (Copy) (Copy) (Copy)</span>
+                </div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">Jordan</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">-</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">3 minutes ago</div>
+                <div style="width:100px; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                    <i class="fa fa-eye" style="color:#1a1a1a; cursor:pointer;" onclick="toggleQuoteRow(this)"></i>
+                    <a href="/admin/request-manager/8/copy-itinerary/13" onclick="return confirm('Start from this quote?')" style="background:#008767; color:#fff; border:none; padding:8px 16px; border-radius:4px; font-weight:600; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block;">Choose</a>
+                </div>
+            </div>
+            <div class="quote-details" style="display:none; background:#f1f5f9; border-bottom:1px solid #e2e8f0; padding:16px 24px;">
+                <div style="margin-left:48px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                        <span style="background:#ccebe0; color:#008767; padding:4px 12px; border-radius:20px; font-weight:700;"><i class="fa fa-user" style="margin-right:6px;"></i>rama k</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-users" style="margin-right:6px;"></i>1 PAX</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-money" style="margin-right:6px;"></i>$0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            </div>
+                </div>
+            </div>
+                                    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:16px 24px; display:flex; align-items:center;" class="quote-row">
+                <div style="width:24px; color:#64748b; cursor:pointer;" class="chevron-toggle" onclick="toggleQuoteRow(this)"><i class="fa fa-chevron-down"></i></div>
+                <div style="width:24px; color:#008767;"><i class="fa fa-star-o"></i></div>
+                <div style="flex:3; display:flex; align-items:center; gap:12px;">
+                    <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+                    <span style="font-weight:700; color:#1a1a1a; font-size:14px;">Copied Quote (Copy) (Copy) (Copy)</span>
+                </div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">Jordan</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">-</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">59 minutes ago</div>
+                <div style="width:100px; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                    <i class="fa fa-eye" style="color:#1a1a1a; cursor:pointer;" onclick="toggleQuoteRow(this)"></i>
+                    <a href="/admin/request-manager/8/copy-itinerary/10" onclick="return confirm('Start from this quote?')" style="background:#008767; color:#fff; border:none; padding:8px 16px; border-radius:4px; font-weight:600; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block;">Choose</a>
+                </div>
+            </div>
+            <div class="quote-details" style="display:none; background:#f1f5f9; border-bottom:1px solid #e2e8f0; padding:16px 24px;">
+                <div style="margin-left:48px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                        <span style="background:#ccebe0; color:#008767; padding:4px 12px; border-radius:20px; font-weight:700;"><i class="fa fa-user" style="margin-right:6px;"></i>rama k</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-users" style="margin-right:6px;"></i>1 PAX</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-money" style="margin-right:6px;"></i>$0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            </div>
+                </div>
+            </div>
+                                    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:16px 24px; display:flex; align-items:center;" class="quote-row">
+                <div style="width:24px; color:#64748b; cursor:pointer;" class="chevron-toggle" onclick="toggleQuoteRow(this)"><i class="fa fa-chevron-down"></i></div>
+                <div style="width:24px; color:#008767;"><i class="fa fa-star-o"></i></div>
+                <div style="flex:3; display:flex; align-items:center; gap:12px;">
+                    <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+                    <span style="font-weight:700; color:#1a1a1a; font-size:14px;">Untitled Quote</span>
+                </div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">Jordan</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">0</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">-</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1 day ago</div>
+                <div style="width:100px; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                    <i class="fa fa-eye" style="color:#1a1a1a; cursor:pointer;" onclick="toggleQuoteRow(this)"></i>
+                    <a href="/admin/request-manager/8/copy-itinerary/4" onclick="return confirm('Start from this quote?')" style="background:#008767; color:#fff; border:none; padding:8px 16px; border-radius:4px; font-weight:600; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block;">Choose</a>
+                </div>
+            </div>
+            <div class="quote-details" style="display:none; background:#f1f5f9; border-bottom:1px solid #e2e8f0; padding:16px 24px;">
+                <div style="margin-left:48px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                        <span style="background:#ccebe0; color:#008767; padding:4px 12px; border-radius:20px; font-weight:700;"><i class="fa fa-user" style="margin-right:6px;"></i>rama Traveler</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-users" style="margin-right:6px;"></i>1 PAX</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-money" style="margin-right:6px;"></i>$0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            </div>
+                </div>
+            </div>
+                                    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:16px 24px; display:flex; align-items:center;" class="quote-row">
+                <div style="width:24px; color:#64748b; cursor:pointer;" class="chevron-toggle" onclick="toggleQuoteRow(this)"><i class="fa fa-chevron-down"></i></div>
+                <div style="width:24px; color:#008767;"><i class="fa fa-star-o"></i></div>
+                <div style="flex:3; display:flex; align-items:center; gap:12px;">
+                    <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+                    <span style="font-weight:700; color:#1a1a1a; font-size:14px;">Untitled Quote</span>
+                </div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">Jordan</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">-</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1 day ago</div>
+                <div style="width:100px; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                    <i class="fa fa-eye" style="color:#1a1a1a; cursor:pointer;" onclick="toggleQuoteRow(this)"></i>
+                    <a href="/admin/request-manager/8/copy-itinerary/3" onclick="return confirm('Start from this quote?')" style="background:#008767; color:#fff; border:none; padding:8px 16px; border-radius:4px; font-weight:600; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block;">Choose</a>
+                </div>
+            </div>
+            <div class="quote-details" style="display:none; background:#f1f5f9; border-bottom:1px solid #e2e8f0; padding:16px 24px;">
+                <div style="margin-left:48px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                        <span style="background:#ccebe0; color:#008767; padding:4px 12px; border-radius:20px; font-weight:700;"><i class="fa fa-user" style="margin-right:6px;"></i>rama Traveler</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-users" style="margin-right:6px;"></i>1 PAX</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-money" style="margin-right:6px;"></i>$0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            </div>
+                </div>
+            </div>
+                                    <div style="background:#fff; border-bottom:1px solid #e2e8f0; padding:16px 24px; display:flex; align-items:center;" class="quote-row">
+                <div style="width:24px; color:#64748b; cursor:pointer;" class="chevron-toggle" onclick="toggleQuoteRow(this)"><i class="fa fa-chevron-down"></i></div>
+                <div style="width:24px; color:#008767;"><i class="fa fa-star-o"></i></div>
+                <div style="flex:3; display:flex; align-items:center; gap:12px;">
+                    <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" style="width:40px; height:40px; object-fit:cover; border-radius:4px;">
+                    <span style="font-weight:700; color:#1a1a1a; font-size:14px;">Untitled Quote</span>
+                </div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">Jordan</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">-</div>
+                <div style="flex:1; font-size:13px; color:#1a1a1a;">1 day ago</div>
+                <div style="width:100px; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                    <i class="fa fa-eye" style="color:#1a1a1a; cursor:pointer;" onclick="toggleQuoteRow(this)"></i>
+                    <a href="/admin/request-manager/8/copy-itinerary/2" onclick="return confirm('Start from this quote?')" style="background:#008767; color:#fff; border:none; padding:8px 16px; border-radius:4px; font-weight:600; font-size:13px; cursor:pointer; text-decoration:none; display:inline-block;">Choose</a>
+                </div>
+            </div>
+            <div class="quote-details" style="display:none; background:#f1f5f9; border-bottom:1px solid #e2e8f0; padding:16px 24px;">
+                <div style="margin-left:48px; display:flex; flex-direction:column; gap:12px;">
+                    <div style="display:flex; gap:16px; align-items:center; font-size:13px;">
+                        <span style="background:#ccebe0; color:#008767; padding:4px 12px; border-radius:20px; font-weight:700;"><i class="fa fa-user" style="margin-right:6px;"></i>kkkkkk Traveler</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-users" style="margin-right:6px;"></i>1 PAX</span>
+                        <span style="color:#1a1a1a; font-weight:600;"><i class="fa fa-money" style="margin-right:6px;"></i>$0</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                            </div>
+                </div>
+            </div>
+                 </div>
+            
+            <div style="padding:16px; text-align:center;">
+                <button style="background:none; border:none; color:#008767; font-weight:600; font-size:14px; cursor:pointer;">Load more</button>
+            </div>
+        </div>
+        <div style="margin-top:24px;text-align:center;"><a href="#" onclick="backToLanding();return false;" style="color:#008767;font-size:13px;font-weight:600;text-decoration:none;"><i class="fa fa-arrow-left"></i> Back</a></div>
+    </div>
+</div>
+
+
+<div class="tp-editor" id="tpEditor" style="display:block">
+    <div class="tp-editor-bar">
+        <div class="tp-editor-tabs">
+            <a href="#" class="active" onclick="showTab('pers',this);return false">My quote</a>
+            <a href="#" onclick="showTab('dbd',this);return false">Day by day</a>
+            <a href="#" onclick="showTab('price',this);return false">Price</a>
+        </div>
+        <div class="tp-actions">
+            <button class="btn-act"><i class="fa fa-th"></i> Library</button>
+            <button class="btn-act"><i class="fa fa-eye"></i> View preview</button>
+            <button class="btn-act btn-share"><i class="fa fa-link"></i> Share to the traveller</button>
+        </div>
+    </div>
+
+    
+    <div class="itin-panel" id="panelPers" style="display:block;">
+        
+        <div class="ev-card">
+            <div class="ev-dots"><span></span><span></span><span></span></div>
+            <h3 onclick="toggleCard(this)">Traveller request <i class="fa fa-chevron-up"></i></h3>
+            <div class="card-body">
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Request ID</div><div class="val">8</div></div>
+                    <div class="ev-info-item"><div class="lbl">Traveller name</div><div class="val">rama K</div></div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Email</div><div class="val">seo@pvt.jo</div></div>
+                    <div class="ev-info-item"><div class="lbl">Phone</div><div class="val">7688888888</div></div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Destination</div><div class="val">Jordan</div></div>
+                                        <div class="ev-info-item"><div class="lbl">Market</div><div class="val">🇯🇴 JO</div></div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Travel dates</div>
+                        <div class="val">
+                                                            Flexible
+                                                    </div>
+                    </div>
+                    <div class="ev-info-item"><div class="lbl">Number of travellers</div><div class="val">1</div></div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Profile</div><div class="val">Alone</div></div>
+                    <div class="ev-info-item"><div class="lbl">Project</div><div class="val">Booking</div></div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Budget</div>
+                        <div class="val">
+                            $100 - $700
+                        </div>
+                    </div>
+                    <div class="ev-info-item"><div class="lbl">Accommodation</div>
+                        <div class="val">
+                                                        Homestay/Guesthouse
+                        </div>
+                    </div>
+                </div>
+                <div class="ev-info-row">
+                    <div class="ev-info-item"><div class="lbl">Guided</div><div class="val">Driver Guide</div></div>
+                                        <div class="ev-info-item"><div class="lbl">Guide language</div><div class="val">English speaker</div></div>
+                </div>
+                                <div class="ev-alert">
+                    <i class="fa fa-info-circle"></i>
+                    <div><strong>Important</strong><br>If you need to adjust the number of pax please go to Request Manager. Please refresh this page when you've done the modifications in Request Manager.</div>
+                    <a href="/admin/request-manager/8">GOT TO REQUEST MANAGER</a>
+                    <button class="close-alert" onclick="this.parentElement.style.display='none'">&times;</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="ev-card">
+            <div class="ev-dots"><span></span><span></span><span></span></div>
+            <h3 onclick="toggleCard(this)">Personalize <i class="fa fa-chevron-up"></i></h3>
+            <div class="card-body" style="margin-top:20px">
+                <div class="fl-group">
+                    <input class="fl-input" id="itinTitle" value="Copied Quote (Copy) (Copy) (Copy) (Copy)" placeholder=" ">
+                    <label class="fl-label">Quote title</label>
+                </div>
+                <div class="fl-group">
+                    <input class="fl-input" id="itinSurname" value="kkkkkk Traveler" placeholder=" " oninput="updateCharCount(this,'surnameCount',255)">
+                    <label class="fl-label">Traveller surname</label>
+                </div>
+                <div class="char-count" id="surnameCount">(15/255)</div>
+                <div class="fl-group">
+                    <select class="fl-input" id="itinLang">
+                        <option value="en" selected>🇬🇧 English</option>
+                        <option value="fr" >🇫🇷 Français</option>
+                        <option value="ar" >🇯🇴 Arabic</option>
+                    </select>
+                    <label class="fl-label">Language of quote</label>
+                </div>
+                <div class="fl-group">
+                    <input type="date" class="fl-input" id="itinArrival" value="" placeholder=" ">
+                    <label class="fl-label">Arrival date</label>
+                </div>
+                <div class="cover-photo-section">
+                    <h5>Cover photo</h5>
+                    <div class="cover-photo-row">
+                        <div class="cover-preview" id="coverPreview">
+                            <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" alt="Cover" id="coverImg">
+                            <button class="remove-cover" onclick="document.getElementById('coverImg').src='';document.getElementById('itinCover').value=''">×</button>
+                        </div>
+                        <div class="cover-upload" onclick="document.getElementById('itinCover').click()">
+                            <i class="fa fa-camera"></i>
+                        </div>
+                        <input type="hidden" id="itinCover" value="">
+                    </div>
+                </div>
+                <button class="btn-save" onclick="saveItin()" style="margin-top:20px">Save Personalization</button>
+            </div>
+        </div>
+    </div>
+
+    
+    <div class="itin-panel panel-dbd" id="panelDbd">
+        <div class="tp-editor-body" style="height:100%">
+            <div class="tp-sidebar">
+                                                        <div class="tp-day-card active" onclick="selDay(18,this)">
+                                                                        <div class="tp-day-thumb" style="background-image:url('/uploads/services/1777311632_download2.jpeg');background-size:cover;background-position:center;"></div>
+                                                <div class="tp-day-info">
+                            <div class="day-label">Day 1</div>
+                            <div class="day-title">lkj</div>
+                                                            <div class="day-loc"><i class="fa fa-map-marker"></i> No location</div>
+                                                    </div>
+                        <button class="del-btn" onclick="event.stopPropagation();delDay(18)"><i class="fa fa-trash"></i></button>
+                    </div>
+                                                    <button class="btn-add-day" onclick="addDay()"><i class="fa fa-plus"></i> Add another day</button>
+            </div>
+            <div class="tp-content">
+
+                
+                <div id="libraryModalOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:50;">
+                    
+                    <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5);" onclick="closeLibraryModal()"></div>
+                    
+                    <div style="position:fixed; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; padding:1rem; pointer-events:none;">
+                        <div style="background:#fff; border-radius:12px; box-shadow:0 25px 50px -12px rgba(0,0,0,.25); width:100%; max-width:48rem; max-height:85vh; display:flex; flex-direction:column; pointer-events:auto; position:relative; font-family:'Inter',sans-serif;">
+                            
+                            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                                <div>
+                                    <h3 class="text-lg font-bold text-gray-800 m-0" id="libModalTitle">Add another day</h3>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="day-badge" id="modalDayBadge">D1</span>
+                                        <span class="text-sm text-gray-500" id="modalDayDate"></span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <button class="btn-create-day" onclick="createBlankDay()"><i class="fa fa-plus"></i> CREATE ANOTHER DAY</button>
+                                    <button onclick="closeLibraryModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl cursor-pointer" style="border:none;background:none">&times;</button>
+                                </div>
+                            </div>
+                            
+                            <div class="px-6 py-3 border-b border-gray-100">
+                                <div class="flex items-center gap-3">
+                                    <div class="flex-1 relative">
+                                        <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                        <input type="text" class="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-green-500" placeholder="Search in my library..." id="searchSavedDay" oninput="searchLibrary(this.value)">
+                                    </div>
+                                    <div class="flex items-center gap-1 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                                        <span>🇬🇧</span>
+                                        <select id="modalLang" class="border-0 text-sm bg-transparent cursor-pointer outline-none">
+                                            <option value="en">English</option>
+                                            <option value="fr">Français</option>
+                                            <option value="ar">Arabic</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="lib-cat-tabs px-6 pt-2" id="libCatTabs">
+                                <button class="lib-cat-tab active" onclick="filterLibCategory('days',this)"><i class="fa fa-calendar"></i> Days <span class="lib-count">0</span></button>
+                                                            </div>
+                            
+                            <div class="overflow-y-auto flex-1 px-6 py-4">
+                                <div class="saved-days-grid" id="savedDaysGrid">
+                                    
+                                    
+                                    
+                                                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="dayFormOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:50;">
+                    <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5);" onclick="closeDayFormModal()"></div>
+                    <div style="position:fixed; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; padding:1rem; pointer-events:none;">
+                        <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col pointer-events-auto relative" style="font-family:'Inter',sans-serif">
+                            
+                            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                                <div class="flex items-center gap-3">
+                                    <div class="day-badge" id="dayBadge">D1</div>
+                                    <div class="text-sm text-gray-500" id="dayDateDisp"></div>
+                                </div>
+                                <button onclick="closeDayFormModal()" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-xl cursor-pointer" style="border:none;background:none">&times;</button>
+                            </div>
+                            
+                            <div class="overflow-y-auto flex-1 px-6 py-4">
+                                <input type="hidden" id="editDayId">
+                                
+                                <div class="photos-section">
+                                    <div class="photos-label">Photos <a href="#">How to choose the right photos?</a></div>
+                                    <div class="photos-scroll" id="photosScroll">
+                                        <div class="photo-item photo-add" onclick="document.getElementById('dayPhotoInput').click()"><i class="fa fa-camera"></i></div>
+                                    </div>
+                                    <input type="file" id="dayPhotoInput" accept="image/*" style="display:none" onchange="uploadDayPhoto(this)">
+                                </div>
+                                
+                                <div class="fl-group">
+                                    <input class="fl-input" id="dayTitle" placeholder=" " oninput="updateCharCount(this,'dayTitleCount',255)">
+                                    <label class="fl-label">Day title</label>
+                                </div>
+                                <div class="char-count" id="dayTitleCount">(0/255)</div>
+                                
+                                <div class="section-label">Description</div>
+                                <div class="desc-area" contenteditable="true" id="dayDesc" data-placeholder="Describe activities..."></div>
+                                <div style="margin-bottom:16px"></div>
+                                
+                                <div class="section-label">Site(s)</div>
+                                <div style="margin-bottom:16px">
+                                    <div class="site-tags" id="siteTags"></div>
+                                    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                                        <input class="fi" id="dayDest" placeholder="Type destination..." style="flex:1" onkeydown="if(event.key==='Enter'){addSiteTag();event.preventDefault()}">
+                                        <span class="add-dest" onclick="addSiteTag()"><i class="fa fa-plus-circle"></i> Add a destination</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="section-label">Meal</div>
+                                <div class="meal-section">
+                                    <div class="meal-option">
+                                        <input type="radio" name="mealType" value="included" id="mealIncluded" onchange="document.getElementById('mealChecks').style.display='inline-flex'">
+                                        <label for="mealIncluded">Meals included</label>
+                                        <div class="meal-checks" id="mealChecks" style="display:none">
+                                            <label><input type="checkbox" id="mB"> breakfast</label>
+                                            <label><input type="checkbox" id="mL"> lunch</label>
+                                            <label><input type="checkbox" id="mD"> dinner</label>
+                                        </div>
+                                    </div>
+                                    <div class="meal-option"><input type="radio" name="mealType" value="none" id="mealNone" checked onchange="document.getElementById('mealChecks').style.display='none'"><label for="mealNone">No meals</label></div>
+                                </div>
+                                
+                                <div class="accom-section">
+                                    <h4>Main accommodation</h4>
+                                    <div id="accomDisplay" style="display:none">
+                                        <div class="accom-hotel-card">
+                                            <img src="/uploads/filemanager/Photos/Petra/Kahzneh.jpg" alt="Hotel">
+                                            <div class="hotel-info">
+                                                <div class="hotel-name" id="accomNameDisp"></div>
+                                                <div class="hotel-loc"><i class="fa fa-map-marker"></i> <span id="accomLocDisp"></span></div>
+                                            </div>
+                                            <button class="close-x" onclick="document.getElementById('accomDisplay').style.display='none';document.getElementById('accomForm').style.display='block'">×</button>
+                                        </div>
+                                        <button class="btn-add-alt">+ Add an alternative</button>
+                                    </div>
+                                    <div id="accomForm">
+                                        <div class="fl-group"><input class="fl-input" id="aName" placeholder=" "><label class="fl-label">Name</label></div>
+                                        <div class="fl-row">
+                                            <div class="fl-group"><select class="fl-input" id="aCat"><option value="">Select</option><option>Hotel</option><option>Boutique</option><option>Camp</option><option>Guesthouse</option><option>Resort</option></select><label class="fl-label">Type</label></div>
+                                            <div class="fl-group"><select class="fl-input" id="aStar"><option value="">Select</option><option value="3-star">★★★</option><option value="4-star">★★★★</option><option value="5-star">★★★★★</option></select><label class="fl-label">Stars</label></div>
+                                        </div>
+                                        <div class="fl-group"><textarea class="fl-input" id="aDesc" rows="2" placeholder=" "></textarea><label class="fl-label">Description</label></div>
+                                        <button type="button" class="svc-btn" onclick="browseHotels()" style="margin-top:8px;width:100%;justify-content:center"><i class="fa fa-bed"></i> Browse Hotels from Library</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="service-section">
+                                    <div class="svc-label">Add a service:</div>
+                                    <div id="servicesContainer" style="margin-top:8px"></div>
+                                    <button type="button" class="svc-btn" onclick="openServiceSelector()" style="margin-top:10px;width:100%;justify-content:center;border:2px dashed #cbd5e1;background:#f8fafc;color:#64748b">
+                                        <i class="fa fa-plus-circle"></i> Browse & Add Service from Library
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="px-6 py-4 border-t border-gray-200">
+                                <button class="btn-save" onclick="saveDay()" style="width:100%;margin:0">Save Day</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="dayEmpty" class="empty-state"><i class="fa fa-hand-pointer-o"></i><p style="font-weight:600">Select a day or add a new one</p></div>
+            </div>
+        </div>
+    </div>
+
+    
+    <div id="serviceSelectorOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:60;">
+        <div style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5);" onclick="closeServiceSelector()"></div>
+        <div style="position:fixed; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; padding:1rem; pointer-events:none;">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl pointer-events-auto relative overflow-hidden" style="height:75vh;font-family:'Inter',sans-serif">
+                
+                <div style="padding:24px 28px;background:linear-gradient(135deg,#008767,#006a50);color:white;position:relative;overflow:hidden">
+                    <div style="position:absolute;right:-30px;top:-30px;width:100px;height:100px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
+                    <div style="position:relative;z-index:10">
+                        <h3 style="font-size:20px;font-weight:800;margin:0;display:flex;align-items:center;gap:12px;color:#fff;border:none;padding:0">
+                            <span style="display:inline-flex;width:36px;height:36px;background:rgba(255,255,255,0.15);border-radius:10px;align-items:center;justify-content:center"><i class="fa fa-plus-circle"></i></span>
+                            Add Service
+                        </h3>
+                        <p style="color:rgba(255,255,255,0.8);font-size:12px;margin-top:6px;margin-bottom:0;font-weight:500">Select a category and service to add to this day.</p>
+                    </div>
+                    <button onclick="closeServiceSelector()" style="position:absolute;top:16px;right:18px;width:32px;height:32px;line-height:32px;text-align:center;background:rgba(255,255,255,0.15);border-radius:50%;color:#fff;border:none;font-size:16px;cursor:pointer">&times;</button>
+                </div>
+                
+                <div style="display:flex;flex-direction:row;height:calc(100% - 80px)">
+                    
+                    <div style="width:38%;border-right:1px solid #f1f5f9;background:linear-gradient(180deg,#f8fafc,#f1f5f9);padding:16px;display:flex;flex-direction:column">
+                        <div style="margin-bottom:12px">
+                            <div style="position:relative">
+                                <i class="fa fa-search" style="position:absolute;left:12px;top:11px;color:#94a3b8;font-size:12px"></i>
+                                <input type="text" id="tp_cat_search" placeholder="Search categories..." style="width:100%;padding:10px 12px 10px 34px;background:#fff;border:2px solid #e2e8f0;border-radius:10px;font-size:12px;font-weight:600;outline:none;box-sizing:border-box;color:#334155" oninput="filterTpCategories(this.value)">
+                            </div>
+                            <div style="display:flex;gap:6px;margin-top:8px">
+                                <button type="button" onclick="tpCollapseAll()" style="flex:1;padding:6px 0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;font-weight:700;color:#64748b;cursor:pointer;letter-spacing:0.5px">COLLAPSE</button>
+                                <button type="button" onclick="tpExpandAll()" style="flex:1;padding:6px 0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;font-size:9px;font-weight:700;color:#64748b;cursor:pointer;letter-spacing:0.5px">EXPAND</button>
+                            </div>
+                        </div>
+                        <div id="tp_category_tree" style="flex:1;overflow-y:auto;padding-right:4px">
+                                                    </div>
+                    </div>
+                    
+                    <div style="width:62%;background:#fff;padding:24px;overflow-y:auto">
+                        <div id="tp_services_list" style="min-height:100%;display:flex;flex-direction:column">
+                            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+                                <div style="width:70px;height:70px;background:linear-gradient(135deg,#e6f4ef,#ccebe0);border-radius:20px;display:flex;align-items:center;justify-content:center;color:#008767;font-size:28px;margin-bottom:20px;box-shadow:0 8px 24px rgba(0,135,103,0.1)"><i class="fa fa-hand-o-left"></i></div>
+                                <h4 style="font-size:18px;font-weight:800;color:#1e293b;margin:0 0 8px 0">Ready to Add</h4>
+                                <p style="font-size:13px;color:#94a3b8;max-width:260px;margin:0;line-height:1.6">Select a category from the left to browse available services.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="itin-panel" id="panelPrice">
+        <div class="ev-card">
+            <div class="ev-dots"><span></span><span></span><span></span></div>
+            <h3 onclick="toggleCard(this)">Trip price <i class="fa fa-chevron-up"></i></h3>
+            <div class="card-body">
+                <div class="ev-alert ev-alert-warning">
+                    <i class="fa fa-info-circle"></i>
+                    <div><strong>Important</strong><br>If you need to adjust the number of pax please go to Request Manager. Please refresh this page when you've done the modifications in Request Manager.</div>
+                </div>
+                <div class="price-total-row">
+                    <div class="fl-group" style="margin:0;width:120px">
+                        <select class="fl-input" id="currencySelect" style="padding:10px" onchange="calcTotal()">
+                            <option value="USD" selected>USD</option>
+                            <option value="EUR" >EUR</option>
+                            <option value="JOD" >JOD</option>
+                        </select>
+                        <label class="fl-label">Currency</label>
+                    </div>
+                    <div style="text-align:right">
+                        <div class="price-total-label">Total price including all taxes</div>
+                        <div class="price-total-val"><span id="currencySymbol">$</span><span id="totalDisp">25.00</span></div>
+                    </div>
+                </div>
+                
+                <div class="apply-all"><a href="#" onclick="applyToAll();return false">Apply to all</a> <i class="fa fa-info-circle"></i></div>
+                                                <div class="price-row">
+                    <div class="check-icon"><i class="fa fa-check-circle"></i></div>
+                    <div class="fl-group" style="margin:0">
+                        <select class="fl-input pax-type">
+                            <option value="adult">adult</option><option value="child">child</option>
+                        </select>
+                        <label class="fl-label">Pax type</label>
+                    </div>
+                    <div class="fl-group" style="margin:0">
+                        <input class="fl-input pax-details" placeholder=" ">
+                        <label class="fl-label">Price details</label>
+                    </div>
+                    <div class="fl-group" style="margin:0">
+                        <input class="fl-input pax-price" type="number" placeholder=" " oninput="calcTotal()" value="25">
+                        <label class="fl-label">Price for this traveller</label>
+                    </div>
+                </div>
+                            </div>
+        </div>
+        <div class="ev-card">
+            <div class="ev-dots"><span></span><span></span><span></span></div>
+            <h3 onclick="toggleCard(this)">Price details <i class="fa fa-chevron-up"></i></h3>
+            <div class="card-body" style="margin-top:16px">
+                <div class="fl-group"><textarea class="fl-input" id="pInc" rows="4" placeholder=" "></textarea><label class="fl-label">Price includes</label></div>
+                <div class="fl-group"><textarea class="fl-input" id="pExc" rows="3" placeholder=" "></textarea><label class="fl-label">Price excludes</label></div>
+                <div class="fl-group"><textarea class="fl-input" id="pCond" rows="3" placeholder=" "></textarea><label class="fl-label">Booking conditions</label></div>
+                <button class="btn-save" onclick="savePrice()">Save Pricing</button>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+var itinId=13,reqId=8,csrf='';
+
+function updateCharCount(el,countId,max){document.getElementById(countId).textContent='('+el.value.length+'/'+max+')'}
+
+var siteTags=[];
+function addSiteTag(){var inp=document.getElementById('dayDest');var v=inp.value.trim();if(!v)return;siteTags.push(v);inp.value='';renderSiteTags()}
+function removeSiteTag(i){siteTags.splice(i,1);renderSiteTags()}
+function renderSiteTags(){var c=document.getElementById('siteTags');c.innerHTML='';siteTags.forEach(function(t,i){c.innerHTML+='<span class="site-tag">'+t+' <span class="remove-tag" onclick="removeSiteTag('+i+')">&times;</span></span>'})}
+
+function toast(m){var t=document.createElement('div');t.textContent=m;t.style.cssText='position:fixed;bottom:20px;right:20px;background:#008767;color:#fff;padding:10px 20px;border-radius:6px;font-size:13px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.15)';document.body.appendChild(t);setTimeout(function(){t.remove()},2000)}
+
+function openPreviousQuotes(){
+    document.getElementById('tpLanding').style.display='none';
+    document.getElementById('tpPreviousQuotes').style.display='block';
+}
+
+function toggleQuoteRow(el) {
+    var row = el.closest('.quote-row');
+    var detailsRow = row.nextElementSibling;
+    var chevron = row.querySelector('.chevron-toggle');
+    if (detailsRow && detailsRow.classList.contains('quote-details')) {
+        if (detailsRow.style.display === 'none' || detailsRow.style.display === '') {
+            detailsRow.style.display = 'block';
+            if(chevron) chevron.innerHTML = '<i class="fa fa-chevron-up"></i>';
+        } else {
+            detailsRow.style.display = 'none';
+            if(chevron) chevron.innerHTML = '<i class="fa fa-chevron-down"></i>';
+        }
+    }
+}
+
+function openEditor(){
+    document.getElementById('tpLanding').style.display='none';
+    document.getElementById('tpPreviousQuotes').style.display='none';
+    document.getElementById('tpEditor').style.display='block';
+    
+    // Auto-select "My quote" tab
+    var persTab = document.querySelector('.tp-editor-tabs a');
+    if(persTab) showTab('pers', persTab);
+}
+function backToLanding(){
+    document.getElementById('tpEditor').style.display='none';
+    document.getElementById('tpPreviousQuotes').style.display='none';
+    document.getElementById('tpLanding').style.display='block';
+}
+
+function showTab(t,el){
+    document.querySelectorAll('.itin-panel').forEach(function(p){p.style.display='none'});
+    document.querySelectorAll('.tp-editor-tabs a').forEach(function(a){a.classList.remove('active')});
+    var m={pers:'panelPers',dbd:'panelDbd',price:'panelPrice'};
+    var p=document.getElementById(m[t]);
+    if(p){p.style.display=t==='dbd'?'flex':'block'}
+    el.classList.add('active');
+}
+
+function toggleCard(el){
+    var body=el.parentElement.querySelector('.card-body');
+    var icon=el.querySelector('i');
+    if(body.style.display==='none'){body.style.display='';icon.className='fa fa-chevron-up'}
+    else{body.style.display='none';icon.className='fa fa-chevron-down'}
+}
+
+function saveItin(){
+    var d={title:document.getElementById('itinTitle').value,traveler_surname:document.getElementById('itinSurname').value,language:document.getElementById('itinLang').value,arrival_date:document.getElementById('itinArrival').value,cover_photo:document.getElementById('itinCover').value};
+    var u='/admin/request-manager/'+reqId+'/itinerary'+(itinId?'/'+itinId:'');
+    fetch(u,{method:itinId?'PUT':'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(r){if(r.success){itinId=r.id;toast('Saved')}})
+}
+
+function addDay(){
+    // Show the modal with saved day templates (no itinId check needed for browsing)
+    openLibraryModal();
+    closeDayFormModal();
+    document.getElementById('dayEmpty').style.display='none';
+    document.querySelectorAll('.tp-day-card').forEach(function(c){c.classList.remove('active')});
+    var cards=document.querySelectorAll('.tp-day-card');
+    var nextDay=cards.length+1;
+    document.getElementById('modalDayBadge').textContent='D'+nextDay;
+    // Calculate date based on arrival date
+    var arrival=document.getElementById('itinArrival').value;
+    if(arrival){
+        var d=new Date(arrival);
+        d.setDate(d.getDate()+nextDay-1);
+        document.getElementById('modalDayDate').textContent=d.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    }
+}
+
+function createBlankDay(){
+    if(!itinId){toast('Save personalization first');return}
+    closeLibraryModal();
+    openDayFormModal();
+    document.getElementById('editDayId').value='';
+    ['dayTitle','aName'].forEach(function(x){document.getElementById(x).value=''});
+    document.getElementById('dayDesc').innerHTML='';document.getElementById('aDesc').value='';
+    ['mB','mL','mD'].forEach(function(x){document.getElementById(x).checked=false});
+    document.getElementById('mealNone').checked=true;
+    document.getElementById('mealChecks').style.display='none';
+    document.getElementById('aCat').value='';document.getElementById('aStar').value='';
+    siteTags=[];renderSiteTags();
+    renderPhotos([]);
+    document.getElementById('servicesContainer').innerHTML='';
+    var cards=document.querySelectorAll('.tp-day-card');
+    document.getElementById('dayBadge').textContent='D'+(cards.length+1);
+    var arrival=document.getElementById('itinArrival').value;
+    if(arrival){
+        var d=new Date(arrival);
+        d.setDate(d.getDate()+cards.length);
+        document.getElementById('dayDateDisp').textContent=d.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    }
+}
+
+// ── Photo Upload ──
+function renderPhotos(photos){
+    var scroll=document.getElementById('photosScroll');
+    scroll.innerHTML='';
+    if(photos && photos.length){
+        photos.forEach(function(url){
+            scroll.innerHTML+='<div class="photo-item"><img src="'+url+'" alt="Photo"><button class="photo-del" onclick="deleteDayPhoto(\''+url+'\')">&times;</button></div>';
+        });
+    }
+    scroll.innerHTML+='<div class="photo-item photo-add" onclick="document.getElementById(\'dayPhotoInput\').click()"><i class="fa fa-camera"></i></div>';
+}
+
+function uploadDayPhoto(input){
+    var dayId=document.getElementById('editDayId').value;
+    if(!dayId){toast('Save the day first before uploading photos');input.value='';return}
+    if(!input.files||!input.files[0])return;
+    var fd=new FormData();
+    fd.append('photo',input.files[0]);
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+dayId+'/photo',{
+        method:'POST',headers:{'X-CSRF-TOKEN':csrf},body:fd
+    }).then(function(r){return r.json()}).then(function(r){
+        if(r.success){renderPhotos(r.photos);toast('Photo uploaded')}
+        else{toast(r.message||'Upload failed')}
+    }).catch(function(){toast('Upload failed')});
+    input.value='';
+}
+
+function deleteDayPhoto(url){
+    var dayId=document.getElementById('editDayId').value;
+    if(!dayId)return;
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+dayId+'/photo',{
+        method:'DELETE',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify({url:url})
+    }).then(function(r){return r.json()}).then(function(r){
+        if(r.success){renderPhotos(r.photos);toast('Photo removed')}
+    });
+}
+
+// ── Service Blocks (Activity / Transport / Accommodation) ──
+var svcCounter=0;
+function addServiceBlock(type, prefill){
+    svcCounter++;
+    prefill=prefill||{};
+    var id='svc_'+svcCounter;
+    var icon=type==='Activity'?'fa-bicycle':type==='Transport'?'fa-car':'fa-bed';
+    
+    // Readonly Card layout
+    var html='<div class="svc-block" id="'+id+'" style="border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:12px;position:relative;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.05)">';
+    html+='<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:12px;right:12px;background:#fef2f2;border:none;border-radius:6px;width:28px;height:28px;font-size:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#ef4444;transition:all 0.2s" onmouseover="this.style.background=\'#ef4444\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#fef2f2\';this.style.color=\'#ef4444\'"><i class="fa fa-trash"></i></button>';
+
+    // Hidden inputs to keep collectServices() working
+    html+='<input type="hidden" class="svc-name" data-type="'+type+'" value="'+(prefill.name||'').replace(/"/g,'&quot;')+'">';
+    html+='<input type="hidden" class="svc-cost" value="'+(prefill.cost||'')+'">';
+    html+='<input type="hidden" class="svc-vendor" value="'+(prefill.vendor||'').replace(/"/g,'&quot;')+'">';
+    html+='<textarea class="svc-desc" style="display:none;" data-type="'+type+'">'+(prefill.description||'')+'</textarea>';
+
+    // Card Header
+    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+    html+='<div style="background:#e6f4ef;color:#008767;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;"><i class="fa '+icon+'"></i></div>';
+    html+='<div style="font-size:15px;font-weight:700;color:#1e293b;">'+(prefill.name||'Library Service')+'</div>';
+    html+='</div>';
+
+    // Details Row
+    html+='<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;">';
+    if(prefill.cost){
+        html+='<div style="background:#f8fafc;padding:6px 12px;border-radius:8px;border:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#0f172a;"><i class="fa fa-money" style="color:#94a3b8;margin-right:6px;"></i>'+prefill.cost+' JOD</div>';
+    }
+    if(prefill.vendor){
+        html+='<div style="background:#f8fafc;padding:6px 12px;border-radius:8px;border:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#0f172a;"><i class="fa fa-building-o" style="color:#94a3b8;margin-right:6px;"></i>'+prefill.vendor+'</div>';
+    }
+    html+='</div>';
+
+    // Description
+    if(prefill.description){
+        html+='<div style="font-size:13px;color:#64748b;line-height:1.6;background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #f1f5f9;">'+(prefill.description||'').replace(/\n/g,'<br>')+'</div>';
+    }
+
+    html+='</div>';
+    document.getElementById('servicesContainer').insertAdjacentHTML('beforeend',html);
+}
+
+function collectServices(){
+    var svcs=[];
+    document.querySelectorAll('.svc-block').forEach(function(b){
+        var nameEl=b.querySelector('.svc-name');
+        var descEl=b.querySelector('.svc-desc');
+        var costEl=b.querySelector('.svc-cost');
+        var vendorEl=b.querySelector('.svc-vendor');
+        var type=nameEl?nameEl.getAttribute('data-type'):'';
+        var svc={type:type,name:nameEl?nameEl.value:'',description:descEl?descEl.value:'',cost:costEl?costEl.value:'',vendor:vendorEl?vendorEl.value:''};
+        var fromEl=b.querySelector('.svc-from');
+        var toEl=b.querySelector('.svc-to');
+        if(fromEl)svc.from=fromEl.value;
+        if(toEl)svc.to=toEl.value;
+        var accomType=b.querySelector('.svc-accom-type');
+        var accomStars=b.querySelector('.svc-accom-stars');
+        if(accomType)svc.accom_type=accomType.value;
+        if(accomStars)svc.accom_stars=accomStars.value;
+        svcs.push(svc);
+    });
+    return svcs;
+}
+
+function renderServices(services){
+    var container=document.getElementById('servicesContainer');
+    container.innerHTML='';
+    if(!services||!services.length)return;
+    services.forEach(function(s){
+        addServiceBlock(s.type||'Service',{name:s.name||'',cost:s.cost||'',vendor:s.vendor||'',description:s.description||''});
+    });
+}
+
+var activeLibCat='days';
+function filterLibCategory(cat,btn){
+    activeLibCat=cat;
+    document.querySelectorAll('.lib-cat-tab').forEach(function(b){b.classList.remove('active')});
+    btn.classList.add('active');
+    document.querySelectorAll('.lib-item').forEach(function(c){
+        c.style.display=c.classList.contains('lib-'+cat)?'':'none';
+    });
+}
+
+function openLibraryModal(catPattern){
+    var overlay=document.getElementById('libraryModalOverlay');
+    overlay.style.display='block';
+    document.body.style.overflow='hidden';
+    // If catPattern provided, filter to that category tab
+    if(catPattern){
+        var tabs=document.querySelectorAll('.lib-cat-tab[data-catname]');
+        var matched=false;
+        tabs.forEach(function(tab){
+            var catname=tab.getAttribute('data-catname')||'';
+            if(catname.indexOf(catPattern)!==-1){
+                var catkey=tab.getAttribute('data-catkey');
+                filterLibCategory(catkey,tab);
+                matched=true;
+            }
+        });
+        if(!matched) filterLibCategory('days',document.querySelector('.lib-cat-tab'));
+    } else {
+        filterLibCategory('days',document.querySelector('.lib-cat-tab'));
+    }
+}
+function closeLibraryModal(){
+    document.getElementById('libraryModalOverlay').style.display='none';
+    document.body.style.overflow='';
+}
+function openLibraryForService(catPattern){
+    closeDayFormModal();
+    openLibraryModal(catPattern);
+}
+
+var browsingForAccom=false;
+function browseHotels(){
+    browsingForAccom=true;
+    closeDayFormModal();
+    openLibraryModal('accommod');
+}
+
+// ── Service Selector Modal ──
+function openServiceSelector(){
+    closeDayFormModal();
+    document.getElementById('serviceSelectorOverlay').style.display='block';
+    document.body.style.overflow='hidden';
+    // Attach radio listeners for category tree inside service selector
+    document.querySelectorAll('#tp_category_tree input[name=tp_category_radio]').forEach(function(radio){
+        radio.onchange=function(){ if(this.value!='0') loadTpServices(this.value); };
+    });
+}
+function closeServiceSelector(){
+    document.getElementById('serviceSelectorOverlay').style.display='none';
+    document.body.style.overflow='';
+}
+
+function toggleChildren(el){
+    var container=el.closest('.category-item');
+    var children=container?container.querySelector('.category-children'):null;
+    var icon=el.querySelector('i');
+    if(children){
+        if(children.classList.contains('hidden')){children.classList.remove('hidden');icon.className='fa fa-minus-square-o';}
+        else{children.classList.add('hidden');icon.className='fa fa-plus-square-o';}
+    }
+}
+function tpCollapseAll(){
+    document.querySelectorAll('#tp_category_tree .category-children').forEach(function(el){el.classList.add('hidden')});
+    document.querySelectorAll('#tp_category_tree .category-toggle i').forEach(function(el){el.className='fa fa-plus-square-o'});
+}
+function tpExpandAll(){
+    document.querySelectorAll('#tp_category_tree .category-children').forEach(function(el){el.classList.remove('hidden')});
+    document.querySelectorAll('#tp_category_tree .category-toggle i').forEach(function(el){el.className='fa fa-minus-square-o'});
+}
+function filterTpCategories(q){
+    q=q.toLowerCase();
+    document.querySelectorAll('#tp_category_tree .category-item').forEach(function(item){
+        var name=item.getAttribute('data-name')||'';
+        if(!q || name.indexOf(q)!==-1){
+            item.classList.remove('hidden');
+            var cur=item.closest('.category-children');
+            while(cur){cur.classList.remove('hidden');cur=cur.parentElement?cur.parentElement.closest('.category-children'):null;}
+        } else {
+            item.classList.add('hidden');
+        }
+    });
+}
+
+function loadTpServices(categoryId, vendorFilter){
+    var list=document.getElementById('tp_services_list');
+    list.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center"><i class="fa fa-spinner fa-spin" style="font-size:28px;color:#008767"></i></div>';
+    var url='/admin/expenses/services?category='+categoryId;
+    if(vendorFilter) url+='&vender='+vendorFilter;
+    fetch(url).then(function(r){return r.json()}).then(function(data){
+        var html='<div style="margin-bottom:16px"><h4 style="font-size:15px;font-weight:800;color:#1e293b;margin:0">'+data.categoryName+'</h4><p style="font-size:11px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px">Available Services</p></div>';
+        html+='<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#f8fafc;border-radius:12px;margin-bottom:16px"><i class="fa fa-filter" style="color:#94a3b8"></i><select onchange="loadTpServices('+categoryId+',this.value)" style="flex:1;background:transparent;border:none;font-size:12px;font-weight:700;color:#475569;outline:none"><option value="">All Vendors</option>';
+        if(data.vendors){Object.entries(data.vendors).forEach(function(e){html+='<option value="'+e[0]+'"'+(vendorFilter==e[0]?' selected':'')+'>'+e[1]+'</option>'});}
+        html+='</select></div>';
+        html+='<div style="max-height:350px;overflow-y:auto;padding-right:4px">';
+        if(data.services && data.services.length>0){
+            data.services.forEach(function(s){
+                var titleEsc = (s.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,"&quot;");
+                var vendorEsc = (s.vender_name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,"&quot;");
+                var notesEsc = (s.notes||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,"&quot;").replace(/\n/g,"\\n").replace(/\r/g,"\\r");
+                html+='<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#fff;border:1px solid #f1f5f9;border-radius:14px;margin-bottom:8px;transition:all 0.15s" onmouseover="this.style.borderColor=\'#a7f3d0\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.06)\'" onmouseout="this.style.borderColor=\'#f1f5f9\';this.style.boxShadow=\'none\'">';
+                html+='<div style="flex:1"><div style="font-size:13px;font-weight:700;color:#1e293b">'+(s.description||'')+'</div><div style="font-size:10px;color:#94a3b8;margin-top:3px;font-weight:600">'+(s.vender_name||'')+'</div></div>';
+                html+='<div style="text-align:right;padding:0 16px"><div style="font-size:13px;font-weight:900;color:#008767">'+(s.cost||'0.00')+' <small style="font-size:10px;color:#94a3b8;font-weight:700">JOD</small></div></div>';
+                html+='<button type="button" onclick="selectTpService('+s.id+',\''+titleEsc+'\',\''+(s.cost_raw||'')+'\',\''+vendorEsc+'\',\''+notesEsc+'\')" style="padding:6px 14px;background:#e6f4ef;color:#008767;border:none;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;transition:all 0.15s" onmouseover="this.style.background=\'#008767\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#e6f4ef\';this.style.color=\'#008767\'">SELECT</button>';
+                html+='</div>';
+            });
+        } else {
+            html+='<div style="padding:40px 0;text-align:center"><i class="fa fa-info-circle" style="font-size:24px;color:#cbd5e1;margin-bottom:10px;display:block"></i><p style="font-size:13px;color:#94a3b8;font-weight:600">No services found for this category.</p></div>';
+        }
+        html+='</div>';
+        list.innerHTML=html;
+    }).catch(function(err){list.innerHTML='<div style="padding:16px;background:#fef2f2;color:#dc2626;border-radius:12px;font-size:13px">Error: '+err.message+'</div>'});
+}
+
+function selectTpService(svcId, title, cost, vendor, notes){
+    var editDayId=document.getElementById('editDayId').value;
+    var prefill={name:title,cost:cost,vendor:vendor||'',description:notes||''};
+    if(!editDayId){
+        closeServiceSelector();
+        openDayFormModal();
+        addServiceBlock('Service',prefill);
+        toast('Service added: '+title);
+        return;
+    }
+    // Day being edited — save the service to the day
+    var svc={type:'Service',name:title,description:notes||'',cost:cost,vendor:vendor||''};
+    var existing=collectServices();
+    existing.push(svc);
+    var dayData={services:existing};
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+editDayId,{
+        method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(dayData)
+    }).then(function(r){return r.json()}).then(function(r){
+        if(r.success){
+            addServiceBlock('Service',prefill);
+            closeServiceSelector();
+            openDayFormModal();
+            toast('Service added: '+title);
+        }
+    });
+}
+
+function openDayFormModal(){
+    document.getElementById('dayFormOverlay').style.display='block';
+    document.body.style.overflow='hidden';
+}
+function closeDayFormModal(){
+    document.getElementById('dayFormOverlay').style.display='none';
+    document.body.style.overflow='';
+}
+
+var searchTimer=null;
+function searchLibrary(q){
+    clearTimeout(searchTimer);
+    searchTimer=setTimeout(function(){
+        q=q.toLowerCase();
+        document.querySelectorAll('.lib-item').forEach(function(c){
+            if(!c.classList.contains('lib-'+activeLibCat)){c.style.display='none';return;}
+            var t=(c.getAttribute('data-title')||'').toLowerCase();
+            c.style.display=t.includes(q)?'':'none';
+        });
+    },200);
+}
+
+function useSavedDay(dayId,title,desc,imgUrl){
+    if(!itinId){toast('Save personalization first');return}
+    // Auto-create day in DB immediately with image from library
+    var data={title:title,description:desc||'',destinations:'',breakfast:false,lunch:false,dinner:false,accommodation_name:'',accommodation_category:'',accommodation_description:''};
+    if(imgUrl) data.photos=[imgUrl];
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day',{
+        method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(data)
+    }).then(function(r){return r.json()}).then(function(r){
+        if(r.success){toast('Day added from template');location.reload()}
+        else{toast('Error adding day')}
+    });
+}
+
+function useService(svcId,title,catName,accType,accCat,notes,specificCatName){
+    if(!itinId){toast('Save personalization first');return}
+
+    // If browsing for main accommodation, fill the accom fields
+    if(browsingForAccom){
+        document.getElementById('aName').value=title;
+        
+        var finalType = accType || '';
+        var finalStar = accCat || '';
+        
+        if(specificCatName) {
+            // e.g. "4 Stars", "Hotels", "Camps"
+            if(!finalStar && specificCatName.match(/(\d)/)) finalStar = specificCatName;
+            if(!finalType) {
+                if(specificCatName.toLowerCase().includes('camp')) finalType = 'Camp';
+                else if(specificCatName.toLowerCase().includes('boutique')) finalType = 'Boutique';
+                else if(specificCatName.toLowerCase().includes('resort')) finalType = 'Resort';
+                else if(specificCatName.toLowerCase().includes('hotel')) finalType = 'Hotel';
+            }
+        }
+        
+        // Default to Hotel if still nothing and it's an accommodation
+        if(!finalType) finalType = 'Hotel';
+        
+        if(finalType) {
+            var catSelect = document.getElementById('aCat');
+            for(var i=0; i<catSelect.options.length; i++){
+                if(catSelect.options[i].text.toLowerCase() === finalType.toLowerCase() || catSelect.options[i].value.toLowerCase() === finalType.toLowerCase()){
+                    catSelect.selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        
+        if(finalStar) {
+            var starMatch = finalStar.match(/(\d)/);
+            if(starMatch) {
+                var starVal = starMatch[1] + '-star';
+                var starSelect = document.getElementById('aStar');
+                for(var j=0; j<starSelect.options.length; j++){
+                    if(starSelect.options[j].value === starVal){
+                        starSelect.selectedIndex = j;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if(notes) document.getElementById('aDesc').value=notes;
+
+        closeLibraryModal();
+        openDayFormModal();
+        browsingForAccom=false;
+        toast('Hotel selected: '+title);
+        return;
+    }
+
+    var editDayId=document.getElementById('editDayId').value;
+    // Determine service type from category name
+    var svcType='Activity';
+    if(catName.toLowerCase().indexOf('accommod')!==-1) svcType='Accommodation';
+    else if(catName.toLowerCase().indexOf('transport')!==-1 || catName.toLowerCase().indexOf('tranport')!==-1) svcType='Transport';
+
+    if(editDayId){
+        // Day is currently being edited — add service to it and auto-save
+        var svc={type:svcType,name:title,description:''};
+        var existingServices=collectServices();
+        existingServices.push(svc);
+        // Save services to the day
+        var dayData={services:existingServices};
+        fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+editDayId,{
+            method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(dayData)
+        }).then(function(r){return r.json()}).then(function(r){
+            if(r.success){
+                // Add the service block visually
+                addServiceBlock(svcType);
+                var blocks=document.querySelectorAll('.svc-block');
+                var lastBlock=blocks[blocks.length-1];
+                if(lastBlock){
+                    var nameInput=lastBlock.querySelector('.svc-name');
+                    if(nameInput) nameInput.value=title;
+                }
+                closeLibraryModal();
+                openDayFormModal();
+                toast(svcType+' added to day');
+            }
+        });
+    } else {
+        // No day being edited — create a new day with this service
+        var data={title:title,description:'',destinations:'',breakfast:false,lunch:false,dinner:false,
+            accommodation_name:svcType==='Accommodation'?title:'',accommodation_category:'',accommodation_description:'',
+            services:[{type:svcType,name:title,description:''}]};
+        fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day',{
+            method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(data)
+        }).then(function(r){return r.json()}).then(function(r){
+            if(r.success){toast('Day created with '+svcType);location.reload()}
+            else{toast('Error adding day')}
+        });
+    }
+}
+
+function selDay(id,el){
+    closeLibraryModal();
+    openDayFormModal();
+    document.getElementById('dayEmpty').style.display='none';
+    document.querySelectorAll('.tp-day-card').forEach(function(c){c.classList.remove('active')});
+    if(el)el.classList.add('active');
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+id,{headers:{'X-CSRF-TOKEN':csrf}}).then(function(r){return r.json()}).then(function(d){
+        document.getElementById('editDayId').value=d.id;
+        document.getElementById('dayTitle').value=d.title||'';
+        updateCharCount(document.getElementById('dayTitle'),'dayTitleCount',255);
+        siteTags=d.destinations?d.destinations.split(', ').filter(function(s){return s.trim()!==''}):[]; renderSiteTags();
+        document.getElementById('dayDesc').innerHTML=d.description||'';
+        document.getElementById('dayBadge').textContent='D'+d.day_number;
+        if(d.breakfast||d.lunch||d.dinner){
+            document.getElementById('mealIncluded').checked=true;
+            document.getElementById('mealChecks').style.display='flex';
+        }else{
+            document.getElementById('mealNone').checked=true;
+            document.getElementById('mealChecks').style.display='none';
+        }
+        document.getElementById('mB').checked=!!d.breakfast;
+        document.getElementById('mL').checked=!!d.lunch;
+        document.getElementById('mD').checked=!!d.dinner;
+        document.getElementById('aName').value=d.accommodation_name||'';
+        document.getElementById('aCat').value=d.accommodation_category||'';
+        document.getElementById('aStar').value=d.accommodation_stars||'';
+        document.getElementById('aDesc').value=d.accommodation_description||'';
+        // Load photos
+        renderPhotos(d.photos||[]);
+        // Load services
+        renderServices(d.services||[]);
+    })
+}
+
+function saveDay(){
+    if(!itinId){toast('Save personalization first');return}
+    var did=document.getElementById('editDayId').value;
+    var d={title:document.getElementById('dayTitle').value,destinations:siteTags.join(', '),description:document.getElementById('dayDesc').innerHTML,breakfast:document.getElementById('mB').checked,lunch:document.getElementById('mL').checked,dinner:document.getElementById('mD').checked,accommodation_name:document.getElementById('aName').value,accommodation_category:document.getElementById('aCat').value,accommodation_stars:document.getElementById('aStar').value,accommodation_description:document.getElementById('aDesc').value,services:collectServices()};
+    var u='/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day'+(did?'/'+did:'');
+    fetch(u,{method:did?'PUT':'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(r){if(r.success){toast('Day saved');location.reload()}})
+}
+
+function delDay(id){if(!confirm('Delete this day?'))return;fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+id,{method:'DELETE',headers:{'X-CSRF-TOKEN':csrf}}).then(function(r){return r.json()}).then(function(r){if(r.success){toast('Deleted');location.reload()}})}
+
+function calcTotal(){
+    var prices=document.querySelectorAll('.pax-price');var sum=0;
+    prices.forEach(function(p){sum+=parseFloat(p.value)||0});
+    document.getElementById('totalDisp').textContent=sum.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    
+    var curr = document.getElementById('currencySelect');
+    if(curr) {
+        var sym = '$';
+        if(curr.value === 'EUR') sym = '€';
+        else if(curr.value === 'JOD') sym = 'JOD ';
+        var symEl = document.getElementById('currencySymbol');
+        if(symEl) symEl.textContent = sym;
+    }
+}
+document.addEventListener('DOMContentLoaded', calcTotal);
+
+function applyToAll(){
+    var prices=document.querySelectorAll('.pax-price');
+    if(prices.length>0){var v=prices[0].value;prices.forEach(function(p){p.value=v})}
+    calcTotal();
+}
+
+function savePrice(){
+    if(!itinId){toast('Save personalization first');return}
+    var prices=document.querySelectorAll('.pax-price');var sum=0;var pp=0;
+    prices.forEach(function(p){sum+=parseFloat(p.value)||0;pp=parseFloat(p.value)||0});
+    var d={price_per_person:pp,num_travelers:prices.length,group_total:sum,price_includes:document.getElementById('pInc').value,price_excludes:document.getElementById('pExc').value,booking_conditions:document.getElementById('pCond').value};
+    fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId,{method:'PUT',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},body:JSON.stringify(d)}).then(function(r){return r.json()}).then(function(r){if(r.success){toast('Pricing saved')}})
+}
+
+// Auto-open editor if redirected from a quote copy
+document.addEventListener('DOMContentLoaded', function(){
+    var params = new URLSearchParams(window.location.search);
+    if(params.get('openEditor') === '1' && itinId) {
+        openEditor();
+        // Clean the URL
+        window.history.replaceState({}, '', window.location.pathname);
+    }
+});
+</script>
+</body>
+</html>

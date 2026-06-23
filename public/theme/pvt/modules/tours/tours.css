@@ -1,0 +1,39 @@
+.tour-blocks-box{
+width:100%;
+max-width:300px;
+color:#FFFFFF;
+z-index:88;
+font-weight:900; 
+text-align:center;
+
+
+}
+
+.tour_search img{ min-width:250px; width:100%; min-height:170px;}
+.tour_search { max-height:170px;  height:100%; text-align:center; max-width:450px; width:100%; position:relative; max-width:400px; margin:auto; overflow:hidden; } 
+.tour-blocks-box a,.tour-blocks-box span {color:#FFFFFF;      
+text-shadow:1px 1px #333;
+-mox-text-shadow:1px 1px 1px #333;
+-webkit-text-shadow:1px 1px #333; 
+			font-size:17px;}
+.tour-box-rate{ position:absolute; z-index:1; padding:4px; bottom:2px; width:100%; }
+.tour-label{position: absolute; z-index:1; top:0; left:-8px;}
+#tour_slide{max-height:450px; overflow:hidden;}
+#tour-search-block-cont-xs{ display:none;}
+
+#tour-search-block-cont .section-title{ margin-left:10px; margin-top:5px; z-index:999;}
+#tour-search-block-cont .col-md-2{ float:left; width:16.666666667%; padding:5px;}
+#tour-open-xs-search{ display:none;}
+#tour-search-box{z-index:999;}
+@media only screen and (max-width :768px) {
+#tour-search-block-cont .col-md-2{ float:left; width:33.33333%; padding:5px;}
+#tour-open-search{ display:none;}
+#tour-open-xs-search{ display:block;}
+#tours-search-box{display:none;}
+#tour-search-block-cont-xs #open-xs-search{ display:block;}
+#tour-search-block-cont-xs{ display:block;}
+
+}
+@media only screen and (max-width :460px) {
+#tour-search-block-cont .col-md-2{ float:left; width:50%; padding:5px;}
+}

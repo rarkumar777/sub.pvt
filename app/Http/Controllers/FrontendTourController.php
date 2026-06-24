@@ -580,9 +580,15 @@ class FrontendTourController extends Controller
         }
         // --- End email notifications ---
 
-        // --- Initiate PayTabs Payment (same as reference site) ---
+        // --- Initiate PayTabs Payment ---
         $paytabsConfig = config('services.paytabs');
         $tourTitle = $content->title ?? 'Tour Booking';
+
+        // Skip payment gateway on local environment (PayTabs rejects localhost URLs)
+        if (config('app.env') === 'local') {
+            return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
+                ->with('success', 'Booking created successfully! (Local mode — payment skipped)');
+        }
 
         try {
             $response = \Illuminate\Support\Facades\Http::withHeaders([
@@ -624,7 +630,7 @@ class FrontendTourController extends Controller
                 }
             }
 
-            // PayTabs failed - log and redirect to success with warning
+            // PayTabs failed - log and redirect with error
             $errorMsg = 'Payment initialization failed.';
             $respData = $response->json();
             if (isset($respData['message'])) {
@@ -637,7 +643,6 @@ class FrontendTourController extends Controller
 
         } catch (\Exception $e) {
             \Log::error('PayTabs Exception', ['error' => $e->getMessage()]);
-            // Booking was created, redirect to success anyway
             return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
                 ->with('success', 'Booking created. Payment gateway unavailable - our team will contact you.');
         }

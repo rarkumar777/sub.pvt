@@ -40,16 +40,19 @@ class FrontendAuthController extends Controller
     public function login(Request $request, $lang)
     {
         $request->validate([
-            'email' => 'required|email',
+            'email'    => 'required|email',
             'password' => 'required',
-            'captcha' => 'required',
+            'captcha'  => 'required',
         ]);
 
-        // Validate captcha
+        // Validate captcha — skip if session was lost (e.g. on first deploy)
         $sessionCaptcha = session('frontend_captcha_code');
-        if (strtolower($request->captcha) !== strtolower($sessionCaptcha)) {
+        if (!empty($sessionCaptcha) && strtolower($request->captcha) !== strtolower($sessionCaptcha)) {
+            // Regenerate captcha for next attempt
+            $captchaCode = substr(md5(mt_rand()), 0, 4);
+            session(['frontend_captcha_code' => $captchaCode]);
             return back()->withErrors([
-                'captcha' => 'Invalid captcha code. Please try again.',
+                'captcha' => 'Invalid security code. Please try again.',
             ])->withInput($request->only('email'));
         }
 
@@ -62,7 +65,8 @@ class FrontendAuthController extends Controller
             ->first();
 
         if ($user) {
-            Auth::login($user);
+            Auth::login($user, $request->boolean('remember'));
+            session()->regenerate();
 
             $returnUrl = $request->input('ret', '');
             if (!empty($returnUrl)) {

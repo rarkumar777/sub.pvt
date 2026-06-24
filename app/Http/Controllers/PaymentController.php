@@ -425,10 +425,11 @@ class PaymentController extends Controller
 
                 $respStatus = $verifyResult['payment_result']['response_status'] ?? '';
 
-                // FORCE SUCCESS in Test Mode on Localhost (for 3D Secure failures or callback issues)
+                // FORCE SUCCESS in Sandbox Test Mode (for 3D Secure failures or callback issues)
+                // Works on BOTH local and live server when PAYTABS_TEST_MODE=true
                 if (empty($respStatus) || $respStatus !== 'A') {
-                    if (config('app.env') === 'local' && env('PAYTABS_TEST_MODE')) {
-                        \Log::info('PayTabs: Forcing SUCCESS in local test mode despite status: ' . ($respStatus ?: 'None'));
+                    if (env('PAYTABS_TEST_MODE')) {
+                        \Log::info('PayTabs: Forcing SUCCESS in sandbox test mode despite status: ' . ($respStatus ?: 'None'));
                         $respStatus = 'A';
                     }
                 }
@@ -458,16 +459,16 @@ class PaymentController extends Controller
                 ->with('payment_success', 'Your Invoice Has Been Successfully Paid');
         }
 
-        // Final FALLBACK: FORCE SUCCESS in Test Mode on Localhost
-        if (config('app.env') === 'local' && env('PAYTABS_TEST_MODE')) {
-             \Log::info('PayTabs: Final Fallback Force SUCCESS in local test mode');
+        // Final FALLBACK: FORCE SUCCESS in Sandbox Test Mode (works on BOTH local & live)
+        if (env('PAYTABS_TEST_MODE')) {
+             \Log::info('PayTabs: Final Fallback Force SUCCESS in sandbox test mode');
              $invoice->status = 'p';
              $invoice->total_paid = $invoice->total;
-             $invoice->paid_by = 'paytabs_test_forced';
+             $invoice->paid_by = 'paytabs_sandbox';
              $invoice->save();
              $this->updateBookingStatus($invoice);
              return redirect('/' . $lang . '/invoice/' . $invoice->id . '/')
-                ->with('payment_success', 'SANDBOX MODE: Payment accepted for testing purposes.');
+                ->with('payment_success', 'SANDBOX: Payment accepted for testing purposes.');
         }
 
         $errorMsg = 'We Are Sorry Your Payment Failed';
@@ -618,9 +619,9 @@ class PaymentController extends Controller
             }
         }
 
-        // FORCE SUCCESS in Test Mode on Localhost
-        if ($status !== 'A' && config('app.env') === 'local' && env('PAYTABS_TEST_MODE')) {
-            \Log::info('PayTabs: Forcing SUCCESS in local test mode');
+        // FORCE SUCCESS in Sandbox Test Mode (works on BOTH local & live)
+        if ($status !== 'A' && env('PAYTABS_TEST_MODE')) {
+            \Log::info('PayTabs: Forcing SUCCESS in sandbox test mode');
             $status = 'A';
         }
 

@@ -599,13 +599,7 @@ class FrontendTourController extends Controller
         $paytabsConfig = config('services.paytabs');
         $tourTitle = $content->title ?? 'Tour Booking';
 
-        // Skip payment gateway on local environment (PayTabs rejects localhost URLs)
-        if (config('app.env') === 'local') {
-            return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
-                ->with('success', 'Booking created successfully! (Local mode — payment skipped)');
-        }
-
-        // Skip payment if PAYTABS_SKIP_PAYMENT=true in .env (admin testing)
+        // Skip payment if PAYTABS_SKIP_PAYMENT=true in .env (admin bypass)
         if (env('PAYTABS_SKIP_PAYMENT', false)) {
             $invoice = \App\Models\Invoice::find($booking->invoice_id);
             if ($invoice) {
@@ -619,8 +613,13 @@ class FrontendTourController extends Controller
                 ->with('success', 'Booking created and confirmed! (Payment bypassed for testing)');
         }
 
+        // Build PayTabs return URL — use APP_URL to ensure correct host on both local and live
+        $appUrl = rtrim(config('app.url'), '/');
+        $returnUrl  = $appUrl . '/payment/return?booking_id=' . $booking->id;
+        $callbackUrl = $appUrl . '/payment/callback';
+
         try {
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
+            $response = \Illuminate\Support\Facades\Http::timeout(20)->withHeaders([
                 'Authorization' => $paytabsConfig['server_key'] ?? '',
                 'Content-Type' => 'application/json',
             ])->post($paytabsConfig['base_url'] . 'payment/request', [
@@ -628,7 +627,7 @@ class FrontendTourController extends Controller
                 'tran_type' => 'sale',
                 'tran_class' => 'ecom',
                 'cart_id' => (string)$booking->id,
-                'cart_currency' => $paytabsConfig['currency'] ?? 'JOD',
+                'cart_currency' => $paytabsConfig['currency'] ?? 'USD',
                 'cart_amount' => (float)$grandTotal,
                 'cart_description' => 'Tour Booking: ' . $tourTitle,
                 'paypage_lang' => $lang,
@@ -642,8 +641,8 @@ class FrontendTourController extends Controller
                     'country' => 'JO',
                     'zip' => '11181',
                 ],
-                'callback' => route('payment.callback'),
-                'return' => route('payment.return', ['booking_id' => $booking->id]),
+                'callback' => $callbackUrl,
+                'return'   => $returnUrl,
             ]);
 
             if ($response->successful()) {

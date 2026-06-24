@@ -450,30 +450,25 @@ class FrontendController extends Controller
         $subject = $request->input('subject', 'Contact Us Message');
         $message = $request->input('message');
 
+        $body  = "<h2 style='color:#f59e0b;'>New Contact Message — PV Travels</h2>";
+        $body .= "<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;'>";
+        $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;width:120px;'>Name:</td><td style='padding:8px;'>" . e($name) . "</td></tr>";
+        $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Email:</td><td style='padding:8px;'><a href='mailto:" . e($email) . "'>" . e($email) . "</a></td></tr>";
+        $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Phone:</td><td style='padding:8px;'>" . (e($phone) ?: '—') . "</td></tr>";
+        $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Subject:</td><td style='padding:8px;'>" . e($subject) . "</td></tr>";
+        $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;vertical-align:top;'>Message:</td><td style='padding:8px;'>" . nl2br(e($message)) . "</td></tr>";
+        $body .= "</table>";
+        $body .= "<hr style='margin:20px 0;border:none;border-top:1px solid #eee;'>";
+        $body .= "<p style='color:#999;font-size:12px;'>This message was sent via the PV Travels contact form.</p>";
+
+        $mailSubject = "Contact: " . $subject . " — " . $name;
+
         try {
-            $recipients = [
-                ['email' => 'info@pvt.jo',           'name' => 'PV Travels'],
-                ['email' => 'rarkumar777@gmail.com',  'name' => 'Admin'],
-            ];
-
-            foreach ($recipients as $recipient) {
-                \Illuminate\Support\Facades\Mail::send([], [], function ($m) use ($name, $email, $phone, $subject, $message, $recipient) {
-                    $body  = "<h2 style='color:#f59e0b;'>New Contact Message — PV Travels</h2>";
-                    $body .= "<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;'>";
-                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;width:120px;'>Name:</td><td style='padding:8px;'>{$name}</td></tr>";
-                    $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Email:</td><td style='padding:8px;'><a href='mailto:{$email}'>{$email}</a></td></tr>";
-                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Phone:</td><td style='padding:8px;'>" . ($phone ?: '—') . "</td></tr>";
-                    $body .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Subject:</td><td style='padding:8px;'>{$subject}</td></tr>";
-                    $body .= "<tr><td style='padding:8px;font-weight:bold;color:#555;vertical-align:top;'>Message:</td><td style='padding:8px;'>{$message}</td></tr>";
-                    $body .= "</table>";
-                    $body .= "<hr style='margin:20px 0;border:none;border-top:1px solid #eee;'>";
-                    $body .= "<p style='color:#999;font-size:12px;'>This message was sent via the PV Travels contact form.</p>";
-
-                    $m->to($recipient['email'], $recipient['name'])
-                      ->subject("Contact: {$subject} — {$name}")
-                      ->html($body);
-                });
-            }
+            \Illuminate\Support\Facades\Mail::html($body, function ($m) use ($mailSubject) {
+                $m->to('info@pvt.jo', 'PV Travels')
+                  ->to('rarkumar777@gmail.com', 'Admin')
+                  ->subject($mailSubject);
+            });
         } catch (\Exception $e) {
             \Log::error('Contact form email failed: ' . $e->getMessage());
         }

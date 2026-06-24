@@ -568,45 +568,49 @@ class PaymentController extends Controller
     {
         \Log::info('PayTabs Booking Return Received', [
             'method' => $request->method(),
-            'all' => $request->all(),
+            'all'    => $request->all(),
         ]);
 
         $bookingId = $request->booking_id ?? $request->cartId ?? $request->cart_id ?? session('paytabs_booking_id');
-        $booking = \App\Models\TourBooking::find($bookingId);
+        $booking   = \App\Models\TourBooking::find($bookingId);
 
         if (!$booking) {
             \Log::error('Booking not found in PayTabs Return', ['booking_id' => $bookingId]);
-            return redirect('/')->with('error', 'Booking not found.');
+            return redirect('/en/')
+                ->with('error', 'Booking not found. Please contact support.');
         }
 
-        $status = $request->respStatus ?? $request->response_status ?? null;
+        // Determine lang from request or fallback to 'en'
+        $lang = $request->input('lang', session('app_lang', app()->getLocale() ?: 'en'));
+
+        $status  = $request->respStatus ?? $request->response_status ?? null;
         $message = $request->respMessage ?? $request->response_message ?? null;
         $tranRef = $request->tranRef ?? $request->tran_ref ?? session('paytabs_tran_ref');
 
         // If we have payment_result as array
         if ($request->has('payment_result')) {
-            $pr = $request->input('payment_result');
-            $status = $status ?? ($pr['response_status'] ?? null);
+            $pr      = $request->input('payment_result');
+            $status  = $status  ?? ($pr['response_status']  ?? null);
             $message = $message ?? ($pr['response_message'] ?? null);
-            $tranRef = $tranRef ?? ($pr['tran_ref'] ?? null);
+            $tranRef = $tranRef ?? ($pr['tran_ref']          ?? null);
         }
 
         // Double check with PayTabs API if status not confirmed
-        if (($status !== 'A' || !$bookingId) && $tranRef) {
+        if (($status !== 'A') && $tranRef) {
             try {
                 $paytabsConfig = config('services.paytabs');
                 $queryResponse = \Illuminate\Support\Facades\Http::withHeaders([
                     'Authorization' => $paytabsConfig['server_key'],
-                    'Content-Type' => 'application/json',
+                    'Content-Type'  => 'application/json',
                 ])->post($paytabsConfig['base_url'] . 'payment/query', [
                     'profile_id' => (int)$paytabsConfig['profile_id'],
-                    'tran_ref' => $tranRef,
+                    'tran_ref'   => $tranRef,
                 ]);
 
                 if ($queryResponse->successful()) {
                     $queryData = $queryResponse->json();
-                    $status = $queryData['payment_result']['response_status'] ?? $status;
-                    $message = $queryData['payment_result']['response_message'] ?? $message;
+                    $status    = $queryData['payment_result']['response_status']  ?? $status;
+                    $message   = $queryData['payment_result']['response_message'] ?? $message;
                     $bookingId = $queryData['cart_id'] ?? $bookingId;
                 }
             } catch (\Exception $e) {
@@ -624,9 +628,9 @@ class PaymentController extends Controller
             // Update invoice + booking
             $invoice = Invoice::find($booking->invoice_id);
             if ($invoice) {
-                $invoice->status = 'p';
+                $invoice->status     = 'p';
                 $invoice->total_paid = $invoice->total;
-                $invoice->paid_by = 'paytabs';
+                $invoice->paid_by    = 'paytabs';
                 $invoice->save();
             }
             $booking->trip_status = 'con';
@@ -634,14 +638,23 @@ class PaymentController extends Controller
 
             session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
 
-            return redirect('/' . app()->getLocale() . '/tours/booking_success/' . $bookingId)
+            return redirect('/' . $lang . '/tours/booking_success/' . $bookingId)
                 ->with('success', 'Payment successful! Your booking is confirmed.');
         }
 
         session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
 
-        return redirect('/' . app()->getLocale() . '/tours/book_tour/' . $booking->tour_id)
-            ->with('error', 'Payment failed: ' . ($message ?? 'Transaction was not completed.'));
+        // Friendly error messages
+        $friendlyMsg = match(true) {
+            str_contains(strtolower($message ?? ''), '3dsecure')  => 'Payment declined: 3D Secure authentication failed. Please use a different card or contact your bank.',
+            str_contains(strtolower($message ?? ''), 'declined')  => 'Your card was declined. Please try a different card.',
+            str_contains(strtolower($message ?? ''), 'cancelled') => 'Payment was cancelled.',
+            str_contains(strtolower($message ?? ''), 'expired')   => 'Your card has expired. Please use a different card.',
+            default => 'Payment could not be completed: ' . ($message ?? 'Please try again.'),
+        };
+
+        return redirect('/' . $lang . '/tours/book_tour/' . $booking->tour_id)
+            ->with('error', $friendlyMsg);
     }
 
     /**

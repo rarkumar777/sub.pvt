@@ -463,14 +463,36 @@ class FrontendController extends Controller
 
         $mailSubject = "Contact: " . $subject . " — " . $name;
 
+        // Log mail config for debugging
+        \Log::info('Contact Form Email Attempt', [
+            'mailer'   => config('mail.default'),
+            'host'     => config('mail.mailers.smtp.host'),
+            'port'     => config('mail.mailers.smtp.port'),
+            'username' => config('mail.mailers.smtp.username'),
+            'from'     => config('mail.from.address'),
+            'to_name'  => $name,
+            'to_email' => $email,
+        ]);
+
+        $sent = false;
+        $errorMsg = '';
+
         try {
-            \Illuminate\Support\Facades\Mail::html($body, function ($m) use ($mailSubject) {
+            \Illuminate\Support\Facades\Mail::html($body, function ($m) use ($mailSubject, $name, $email) {
                 $m->to('info@pvt.jo', 'PV Travels')
-                  ->to('rarkumar777@gmail.com', 'Admin')
+                  ->cc('rarkumar777@gmail.com', 'Admin')
+                  ->replyTo($email, $name)
                   ->subject($mailSubject);
             });
+            $sent = true;
+            \Log::info('Contact form email sent successfully to info@pvt.jo', ['from_name' => $name, 'from_email' => $email]);
         } catch (\Exception $e) {
-            \Log::error('Contact form email failed: ' . $e->getMessage());
+            $errorMsg = $e->getMessage();
+            \Log::error('Contact form email FAILED', [
+                'error'      => $errorMsg,
+                'error_code' => $e->getCode(),
+                'trace'      => substr($e->getTraceAsString(), 0, 500),
+            ]);
         }
 
         return redirect('/' . $lang . '/contact-us/')

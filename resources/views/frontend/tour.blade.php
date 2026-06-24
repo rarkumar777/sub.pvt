@@ -5,10 +5,30 @@
 @section('content')
 @php
     $currSymbols = ['USD'=>'$','JOD'=>'JD','EUR'=>'€'];
-    $currRates = ['USD'=>1,'JOD'=>0.709,'EUR'=>0.92];
-    $sym = $currSymbols[$activeCurrency] ?? '$';
+    $currRates   = ['USD'=>1,'JOD'=>0.709,'EUR'=>0.92];
+    $sym  = $currSymbols[$activeCurrency] ?? '$';
     $rate = $currRates[$activeCurrency] ?? 1;
-    $displayPrice = round($tour->min_price * $rate);
+
+    // Try min_price first; if 0, calculate from pricing_bases
+    $rawPrice = floatval($tour->min_price ?? 0);
+
+    if ($rawPrice <= 0) {
+        // Try regular season bases
+        foreach (['pricing_bases', 'pricing_bases_low', 'pricing_bases_high'] as $field) {
+            $bases = $tour->$field ? @unserialize($tour->$field, ['allowed_classes' => false]) : [];
+            if (is_array($bases) && count($bases) > 0) {
+                foreach ($bases as $base) {
+                    $p = floatval($base['price'] ?? 0);
+                    if ($p > 0 && ($rawPrice <= 0 || $p < $rawPrice)) {
+                        $rawPrice = $p;
+                    }
+                }
+                if ($rawPrice > 0) break;
+            }
+        }
+    }
+
+    $displayPrice = round($rawPrice * $rate);
 @endphp
 <!-- TOUR HERO SECTION -->
 <section class="relative h-[650px] flex items-end overflow-hidden -mt-[92px]">

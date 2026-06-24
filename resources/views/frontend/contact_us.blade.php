@@ -125,7 +125,7 @@
                     <p class="text-gray-500 text-sm mt-1">Fill in the form below and we'll get back to you within 24 hours.</p>
                 </div>
 
-                <form action="/{{ $lang }}/contact-us/" method="POST" class="space-y-6" autocomplete="off">
+                <form action="{{ route('frontend.contact-us.submit', ['lang' => $lang]) }}" method="POST" class="space-y-6" autocomplete="off">
                     @csrf
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">

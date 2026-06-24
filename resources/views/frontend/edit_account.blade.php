@@ -63,7 +63,7 @@
                     @endif
 
                     <div class="sd-12 pad">
-                        <form method="POST" action="/{{ $lang }}/users/account/edit-account/" enctype="multipart/form-data">
+                        <form method="POST" action="{{ route('frontend.account.update', ['lang' => $lang]) }}" enctype="multipart/form-data">
                             @csrf
 
                             {{-- First Name / Last Name --}}

@@ -233,7 +233,7 @@
                     </div>
                     
                     <div class="w-full md:w-auto">
-                        <form method="POST" action="/{{ $lang }}/invoice/{{ $invoice->id }}/pay" id="payment-form" class="bg-white p-4 rounded-2xl shadow-sm border border-indigo-100 flex flex-col sm:flex-row items-center gap-6">
+                        <form method="POST" action="{{ route('frontend.payment.initiate', ['lang' => $lang, 'id' => $invoice->id]) }}" id="payment-form" class="bg-white p-4 rounded-2xl shadow-sm border border-indigo-100 flex flex-col sm:flex-row items-center gap-6">
                             @csrf
                             <label class="flex items-center gap-3 cursor-pointer px-2 py-1 rounded-lg hover:bg-slate-50 transition-colors">
                                 <input type="radio" name="payment_method" value="visa" checked class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer">

@@ -64,7 +64,7 @@
                 @endif
 
                 <div id="js-errors" class="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl mb-8 hidden"></div>
-                <form id="bookingForm" action="/{{ $lang }}/tours/book_tour/{{ $tour->id }}/" method="POST" class="space-y-8" onsubmit="return validateBooking()">
+                <form id="bookingForm" action="{{ route('frontend.tour.book', ['lang' => $lang, 'id' => $tour->id]) }}" method="POST" class="space-y-8" onsubmit="return validateBooking()">
                     @csrf
                     
                     <!-- PERSONAL INFORMATION -->

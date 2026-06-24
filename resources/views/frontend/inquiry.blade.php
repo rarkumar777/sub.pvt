@@ -25,7 +25,7 @@
     @endif
 
     <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8">
-        <form method="POST" action="/{{ $lang }}/inquiry/">
+        <form method="POST" action="{{ route('frontend.inquiry.submit', ['lang' => $lang]) }}">
             @csrf
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">

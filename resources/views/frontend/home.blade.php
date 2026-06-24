@@ -184,7 +184,7 @@
 <!-- SEARCH BAR (Overlapping & Glassmorphic) -->
 <div class="max-w-6xl mx-auto px-4 -mt-20 relative z-30 mb-20">
     <div class="search-bar bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/40 p-4 sm:p-6 ring-1 ring-black/5">
-        <form method="GET" action="/{{ $lang }}/tours/">
+        <form method="GET" action="{{ route('frontend.tours', ['lang' => $lang]) }}">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
 
                 <div class="lg:col-span-1">

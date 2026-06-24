@@ -102,7 +102,7 @@
             @endforeach
         @endif
 
-        <form method="POST" action="/{{ $lang }}/users/reset-password/">
+        <form method="POST" action="{{ route('frontend.reset.update', ['lang' => $lang]) }}">
             @csrf
             <input type="hidden" name="token" value="{{ $token }}">
             <input type="hidden" name="email" value="{{ $email }}">

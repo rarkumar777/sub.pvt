@@ -463,7 +463,7 @@
                 @endforeach
             @endif
 
-            <form method="POST" action="/{{ $lang }}/users/register/" enctype="multipart/form-data">
+            <form method="POST" action="{{ route('frontend.register.post', ['lang' => $lang]) }}" enctype="multipart/form-data">
                 @csrf
 
                 {{-- Single unified 2-column grid for ALL fields --}}

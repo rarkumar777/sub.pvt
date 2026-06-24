@@ -255,7 +255,7 @@
             @endforeach
         @endif
 
-        <form method="POST" action="/{{ $lang }}/users/login/">
+        <form method="POST" action="{{ route('frontend.login.post', ['lang' => $lang]) }}">
             @csrf
             <input type="hidden" name="ret" value="{{ $returnUrl ?? '' }}">
 

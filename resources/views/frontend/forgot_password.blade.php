@@ -111,7 +111,7 @@
         @endif
 
         @if(!session('status'))
-        <form method="POST" action="/{{ $lang }}/users/forgot-password/">
+        <form method="POST" action="{{ route('frontend.forgot.send', ['lang' => $lang]) }}">
             @csrf
             <div class="fp-input-wrap">
                 <i class="fa-solid fa-envelope"></i>

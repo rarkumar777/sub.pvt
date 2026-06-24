@@ -11,7 +11,7 @@
 
     <!-- Search / Filter Bar -->
     <div class="search-bar bg-white rounded-2xl shadow-lg border border-gray-100 p-4 sm:p-6 mb-12">
-        <form method="GET" action="/{{ $lang }}/tours/">
+        <form method="GET" action="{{ route('frontend.tours', ['lang' => $lang]) }}">
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-3">
                 <div class="lg:col-span-1">
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Destination</label>

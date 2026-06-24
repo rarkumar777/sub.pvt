@@ -99,7 +99,7 @@
         </div>
     </div>
 
-    <form method="post" action="/{{ $lang }}/tours/inquery/{{ $tour->id }}/" id="inqueryForm">
+    <form method="post" action="{{ route('frontend.tour.inquery', ['lang' => $lang, 'id' => $tour->id]) }}" id="inqueryForm">
         @csrf
 
         {{-- Two-Column Layout --}}

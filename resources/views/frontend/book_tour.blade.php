@@ -188,10 +188,35 @@
 
                     <!-- SUBMIT BUTTON -->
                     <div class="pt-2">
-                        <button type="submit" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all text-base uppercase tracking-wider">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-                            <span>{{ __('Secure Reservation') }}</span>
+                        <button type="submit" id="submitBtn" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all text-base uppercase tracking-wider">
+                            <!-- Default icon -->
+                            <svg id="btnIconDefault" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                            <!-- Spinner (hidden by default) -->
+                            <svg id="btnSpinner" class="w-5 h-5 hidden animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                            <span id="btnText">{{ __('Secure Reservation') }}</span>
                         </button>
+                    </div>
+
+                    <!-- FULL SCREEN LOADING OVERLAY -->
+                    <div id="bookingLoadingOverlay" class="fixed inset-0 z-[9999] hidden flex-col items-center justify-center bg-gray-900/80 backdrop-blur-sm">
+                        <div class="bg-white rounded-3xl shadow-2xl p-10 flex flex-col items-center gap-6 max-w-sm w-full mx-4">
+                            <!-- Animated logo/icon -->
+                            <div class="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center">
+                                <svg class="w-10 h-10 text-orange-600 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                </svg>
+                            </div>
+                            <div class="text-center">
+                                <h3 class="text-xl font-black text-gray-900 mb-1">{{ __('Processing Your Booking') }}...</h3>
+                                <p class="text-sm text-gray-500">{{ __('Please wait, do not close this page.') }}</p>
+                            </div>
+                            <!-- Progress bar -->
+                            <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                                <div id="bookingProgressBar" class="h-2.5 rounded-full bg-gradient-to-r from-orange-400 to-orange-600 transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                            <p id="bookingProgressLabel" class="text-xs font-bold text-orange-500 uppercase tracking-widest">{{ __('Submitting...') }}</p>
+                        </div>
                     </div>
                 </form>
 
@@ -237,8 +262,47 @@
                         errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         return false;
                     }
+
+                    // ✅ Validation passed — show loading UI
                     errBox.classList.add('hidden');
+                    showBookingLoader();
                     return true;
+                }
+
+                function showBookingLoader() {
+                    // Disable & transform button
+                    var btn = document.getElementById('submitBtn');
+                    var iconDefault = document.getElementById('btnIconDefault');
+                    var spinner = document.getElementById('btnSpinner');
+                    var btnText = document.getElementById('btnText');
+
+                    btn.disabled = true;
+                    btn.classList.add('opacity-80', 'cursor-not-allowed');
+                    iconDefault.classList.add('hidden');
+                    spinner.classList.remove('hidden');
+                    btnText.textContent = '{{ __('Processing...') }}';
+
+                    // Show overlay
+                    var overlay = document.getElementById('bookingLoadingOverlay');
+                    overlay.classList.remove('hidden');
+                    overlay.classList.add('flex');
+
+                    // Animate progress bar
+                    var bar = document.getElementById('bookingProgressBar');
+                    var label = document.getElementById('bookingProgressLabel');
+                    var steps = [
+                        { pct: 20,  text: '{{ __('Validating details...') }}',    delay: 100 },
+                        { pct: 45,  text: '{{ __('Creating your booking...') }}', delay: 800 },
+                        { pct: 70,  text: '{{ __('Saving reservation...') }}',    delay: 1800 },
+                        { pct: 90,  text: '{{ __('Sending confirmation...') }}',  delay: 2800 },
+                        { pct: 98,  text: '{{ __('Almost done...') }}',           delay: 3800 },
+                    ];
+                    steps.forEach(function(s) {
+                        setTimeout(function() {
+                            bar.style.width = s.pct + '%';
+                            label.textContent = s.text;
+                        }, s.delay);
+                    });
                 }
                 </script>
             </div>

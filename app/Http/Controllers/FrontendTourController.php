@@ -541,23 +541,27 @@ class FrontendTourController extends Controller
         $bGuestName  = $request->input('guest_name');
         $bGuestEmail = $request->input('email');
         $bTourTitle  = $content->title ?? 'Tour Booking';
-        $bAdminEmail = 'info@pvt.jo';
 
-        // 1) Notify admin
+        // 1) Notify admin (info@pvt.jo + rarkumar777@gmail.com)
         try {
-            \Illuminate\Support\Facades\Mail::send([], [], function ($msg) use ($booking, $bGuestName, $bGuestEmail, $bTourTitle, $bAdminEmail, $grandTotal, $dbDate, $adultCount, $childCount, $infantCount, $priceBase) {
-                $body  = "<h2>New Booking Request</h2>";
-                $body .= "<p><strong>Tour:</strong> {$bTourTitle}</p>";
-                $body .= "<p><strong>Booking ID:</strong> #{$booking->id}</p>";
-                $body .= "<p><strong>Guest:</strong> {$bGuestName}</p>";
-                $body .= "<p><strong>Email:</strong> {$bGuestEmail}</p>";
-                $body .= "<p><strong>Travel Date:</strong> {$dbDate}</p>";
-                $body .= "<p><strong>Adults:</strong> {$adultCount} | <strong>Children:</strong> {$childCount} | <strong>Infants:</strong> {$infantCount}</p>";
-                $body .= "<p><strong>Hotel Grade:</strong> {$priceBase} Star</p>";
-                $body .= "<p><strong>Total:</strong> JD " . number_format($grandTotal, 2) . "</p>";
-                $msg->to($bAdminEmail, 'PVT Reservations')
-                    ->subject("New Booking: {$bTourTitle} — {$bGuestName}")
-                    ->html($body);
+            $adminBody  = "<h2 style='color:#f59e0b;'>New Booking Request — PV Travels</h2>";
+            $adminBody .= "<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;'>";
+            $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;width:140px;'>Tour:</td><td style='padding:8px;'>" . e($bTourTitle) . "</td></tr>";
+            $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Booking ID:</td><td style='padding:8px;'>#BK-{$booking->id}</td></tr>";
+            $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Guest:</td><td style='padding:8px;'>" . e($bGuestName) . "</td></tr>";
+            $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Email:</td><td style='padding:8px;'><a href='mailto:" . e($bGuestEmail) . "'>" . e($bGuestEmail) . "</a></td></tr>";
+            $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Travel Date:</td><td style='padding:8px;'>" . e($dbDate) . "</td></tr>";
+            $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Adults:</td><td style='padding:8px;'>{$adultCount} Adults | {$childCount} Children | {$infantCount} Infants</td></tr>";
+            $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Hotel Grade:</td><td style='padding:8px;'>{$priceBase} Star</td></tr>";
+            $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Total:</td><td style='padding:8px;font-weight:bold;color:#16a34a;'>JD " . number_format($grandTotal, 2) . "</td></tr>";
+            $adminBody .= "</table>";
+            $adminBody .= "<hr style='margin:20px 0;border:none;border-top:1px solid #eee;'>";
+            $adminBody .= "<p style='color:#999;font-size:12px;'>This booking was submitted via PV Travels website.</p>";
+
+            \Illuminate\Support\Facades\Mail::html($adminBody, function ($msg) use ($bGuestName, $bTourTitle, $booking) {
+                $msg->to('info@pvt.jo', 'PV Travels')
+                    ->to('rarkumar777@gmail.com', 'Admin')
+                    ->subject("New Booking #BK-{$booking->id}: {$bTourTitle} — {$bGuestName}");
             });
         } catch (\Exception $e) {
             \Log::error('Booking admin email failed: ' . $e->getMessage());
@@ -565,20 +569,31 @@ class FrontendTourController extends Controller
 
         // 2) Confirmation to customer
         try {
-            \Illuminate\Support\Facades\Mail::send([], [], function ($msg) use ($bGuestName, $bGuestEmail, $bTourTitle, $grandTotal, $dbDate) {
-                $body  = "<p>Dear {$bGuestName},</p>";
-                $body .= "<p>Thank you for booking <strong>{$bTourTitle}</strong> with PV Travels.</p>";
-                $body .= "<p><strong>Travel Date:</strong> {$dbDate}<br><strong>Total:</strong> JD " . number_format($grandTotal, 2) . "</p>";
-                $body .= "<p>Our team will contact you shortly to confirm your reservation.</p>";
-                $body .= "<p>Best regards,<br>PV Travels Team<br>info@pvt.jo</p>";
+            $customerBody  = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>";
+            $customerBody .= "<div style='background:#f59e0b;padding:30px;text-align:center;border-radius:8px 8px 0 0;'>";
+            $customerBody .= "<h1 style='color:#fff;margin:0;font-size:24px;'>Booking Request Received!</h1></div>";
+            $customerBody .= "<div style='background:#fff;padding:30px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px;'>";
+            $customerBody .= "<p style='font-size:16px;'>Dear " . e($bGuestName) . ",</p>";
+            $customerBody .= "<p>Thank you for booking <strong>" . e($bTourTitle) . "</strong> with PV Travels. We have received your request and our team will contact you shortly to confirm your reservation.</p>";
+            $customerBody .= "<table style='border-collapse:collapse;width:100%;font-size:14px;margin:20px 0;'>";
+            $customerBody .= "<tr style='background:#f9f9f9;'><td style='padding:10px;font-weight:bold;color:#555;'>Booking ID:</td><td style='padding:10px;font-weight:bold;'>#BK-{$booking->id}</td></tr>";
+            $customerBody .= "<tr><td style='padding:10px;font-weight:bold;color:#555;'>Tour:</td><td style='padding:10px;'>" . e($bTourTitle) . "</td></tr>";
+            $customerBody .= "<tr style='background:#f9f9f9;'><td style='padding:10px;font-weight:bold;color:#555;'>Travel Date:</td><td style='padding:10px;'>" . e($dbDate) . "</td></tr>";
+            $customerBody .= "<tr><td style='padding:10px;font-weight:bold;color:#555;'>Total Amount:</td><td style='padding:10px;font-weight:bold;color:#16a34a;'>JD " . number_format($grandTotal, 2) . "</td></tr>";
+            $customerBody .= "</table>";
+            $customerBody .= "<p>If you have any questions, please contact us at <a href='mailto:info@pvt.jo'>info@pvt.jo</a> or call <a href='tel:+96277996601'>+962 77996601</a>.</p>";
+            $customerBody .= "<p style='margin-top:30px;'>Best regards,<br><strong>PV Travels Team</strong></p>";
+            $customerBody .= "</div></div>";
+
+            \Illuminate\Support\Facades\Mail::html($customerBody, function ($msg) use ($bGuestName, $bGuestEmail, $bTourTitle, $booking) {
                 $msg->to($bGuestEmail, $bGuestName)
-                    ->subject("Booking Received: {$bTourTitle}")
-                    ->html($body);
+                    ->subject("Booking Confirmed #BK-{$booking->id}: {$bTourTitle} — PV Travels");
             });
         } catch (\Exception $e) {
             \Log::error('Booking customer email failed: ' . $e->getMessage());
         }
         // --- End email notifications ---
+
 
         // --- Initiate PayTabs Payment ---
         $paytabsConfig = config('services.paytabs');

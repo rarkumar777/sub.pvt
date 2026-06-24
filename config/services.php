@@ -38,8 +38,11 @@ return [
     'paytabs' => [
         'profile_id' => env('PAYTABS_PROFILE_ID', '154919'),
         'server_key' => env('PAYTABS_SERVER_KEY'),
-        'base_url' => env('PAYTABS_BASE_URL', 'https://secure-jordan.paytabs.com/'),
-        'currency' => env('PAYTABS_CURRENCY', 'JOD'),
+        'base_url'   => env('PAYTABS_TEST_MODE', false)
+                            ? 'https://secure-sandbox.paytabs.com/'
+                            : env('PAYTABS_BASE_URL', 'https://secure-jordan.paytabs.com/'),
+        'currency'   => env('PAYTABS_CURRENCY', 'JOD'),
+        'test_mode'  => env('PAYTABS_TEST_MODE', false),
     ],
 
 ];

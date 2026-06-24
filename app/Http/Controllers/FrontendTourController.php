@@ -605,6 +605,20 @@ class FrontendTourController extends Controller
                 ->with('success', 'Booking created successfully! (Local mode — payment skipped)');
         }
 
+        // Skip payment if PAYTABS_SKIP_PAYMENT=true in .env (admin testing)
+        if (env('PAYTABS_SKIP_PAYMENT', false)) {
+            $invoice = \App\Models\Invoice::find($booking->invoice_id);
+            if ($invoice) {
+                $invoice->status   = 'p';
+                $invoice->paid_by  = 'manual';
+                $invoice->save();
+            }
+            $booking->trip_status = 'con';
+            $booking->save();
+            return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
+                ->with('success', 'Booking created and confirmed! (Payment bypassed for testing)');
+        }
+
         try {
             $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'Authorization' => $paytabsConfig['server_key'] ?? '',

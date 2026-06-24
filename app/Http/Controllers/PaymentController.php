@@ -266,6 +266,19 @@ class PaymentController extends Controller
             return $this->handleManualPayment($invoice, $amount, $lang);
         }
 
+        // LOCAL SIMULATE: PayTabs rejects http://127.0.0.1 callback URLs (error 210)
+        // Set PAYTABS_LOCAL_SIMULATE=true in .env for local testing
+        if (env('PAYTABS_LOCAL_SIMULATE', false)) {
+            \Log::info('PayTabs Local Simulate: Marking invoice #' . $invoice->id . ' as paid');
+            $invoice->status     = 'p';
+            $invoice->total_paid = $invoice->total;
+            $invoice->paid_by    = 'paytabs_simulated';
+            $invoice->save();
+            $this->updateBookingStatus($invoice);
+            return redirect('/' . $lang . '/invoice/' . $invoice->id . '/')
+                ->with('payment_success', 'SANDBOX SIMULATE: Payment accepted successfully for local testing.');
+        }
+
         // Get checkout currency
         $checkoutCurrency = $this->getCheckoutCurrency();
         $useCurrency = $checkoutCurrency['name'];
@@ -280,32 +293,35 @@ class PaymentController extends Controller
         $convertedAmount = $this->convertToCheckoutCurrency($amount, $checkoutCurrency['rate']);
 
         $customer = \App\Models\User::find($invoice->user_id);
-        $callbackUrl = url('/' . $lang . '/payment/paytabs/callback');
-        $returnUrl = url('/' . $lang . '/payment/paytabs/return');
+
+        // Build return/callback URLs using APP_URL (works on both local and live)
+        $appUrl      = rtrim(config('app.url'), '/');
+        $callbackUrl = $appUrl . '/' . $lang . '/payment/paytabs/callback';
+        $returnUrl   = $appUrl . '/' . $lang . '/payment/paytabs/return';
 
         $ptUrl = $ptConfig['url'] ?? 'https://secure-jordan.paytabs.com';
 
         $postData = [
-            'profile_id' => (int)$ptConfig['profile_id'],
-            'tran_type' => 'sale',
-            'tran_class' => 'ecom',
-            'cart_id' => $invoice->id . '-' . time(),
+            'profile_id'       => (int)$ptConfig['profile_id'],
+            'tran_type'        => 'sale',
+            'tran_class'       => 'ecom',
+            'cart_id'          => $invoice->id . '-' . time(),
             'cart_description' => 'INV-' . $invoice->id,
-            'cart_currency' => $useCurrency,
-            'cart_amount' => $convertedAmount,
-            'paypage_lang' => 'en',
+            'cart_currency'    => $useCurrency,
+            'cart_amount'      => $convertedAmount,
+            'paypage_lang'     => 'en',
             'customer_details' => [
-                'name' => trim(($customer->first_name ?? 'Guest') . ' ' . ($customer->last_name ?? '')),
-                'email' => $customer->email ?? 'guest@guest.com',
-                'phone' => $customer->phone ?? '000000000',
+                'name'    => trim(($customer->first_name ?? 'Guest') . ' ' . ($customer->last_name ?? '')),
+                'email'   => $customer->email ?? 'guest@guest.com',
+                'phone'   => $customer->phone ?? '000000000',
                 'street1' => substr($customer->address ?? 'Address', 0, 50),
-                'city' => substr($customer->city ?? 'Amman', 0, 50),
-                'state' => 'Amman',
+                'city'    => substr($customer->city ?? 'Amman', 0, 50),
+                'state'   => 'Amman',
                 'country' => 'JO',
-                'zip' => '11111'
+                'zip'     => '11111'
             ],
             'callback' => $callbackUrl,
-            'return' => $returnUrl,
+            'return'   => $returnUrl,
         ];
 
         // Make API call to PayTabs
@@ -315,44 +331,66 @@ class PaymentController extends Controller
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
         curl_setopt($ch, CURLOPT_HTTPHEADER, [
             'Authorization: ' . $ptConfig['server_key'],
             'Content-Type: application/json',
         ]);
 
-        $response = curl_exec($ch);
+        $response  = curl_exec($ch);
         $curlError = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         $result = json_decode($response, true);
 
         // Log for debugging
         \Log::info('PayTabs Payment Request', [
-            'url' => $apiUrl,
-            'post_data' => $postData,
-            'http_code' => $httpCode,
+            'url'        => $apiUrl,
+            'post_data'  => $postData,
+            'http_code'  => $httpCode,
             'curl_error' => $curlError,
-            'response' => $result,
+            'response'   => $result,
         ]);
 
         if ($httpCode == 200 && isset($result['redirect_url'])) {
             session([
-                'payment_invoice_id' => $invoice->id,
-                'payment_lang' => $lang,
-                'payment_tran_ref' => $result['tran_ref'] ?? '',
-                'payment_pt_url' => $ptUrl,
+                'payment_invoice_id'    => $invoice->id,
+                'payment_lang'          => $lang,
+                'payment_tran_ref'      => $result['tran_ref'] ?? '',
+                'payment_pt_url'        => $ptUrl,
                 'payment_pt_server_key' => $ptConfig['server_key'],
                 'payment_pt_profile_id' => $ptConfig['profile_id'],
             ]);
             return redirect()->away($result['redirect_url']);
         }
 
-        // PayTabs API failed — show error details
-        $errorMsg = $result['message'] ?? ($result['code'] ?? 'Unknown error');
+        // PayTabs API failed — log exact error
+        $ptCode = $result['code']    ?? '';
+        $ptMsg  = $result['message'] ?? ($curlError ?: 'Unknown error (HTTP ' . $httpCode . ')');
+        \Log::error('PayTabs Invoice Payment Failed', [
+            'http_code' => $httpCode,
+            'pt_code'   => $ptCode,
+            'pt_msg'    => $ptMsg,
+            'curl_err'  => $curlError,
+        ]);
+
+        // TEST MODE fallback: force success when API fails
+        if (env('PAYTABS_TEST_MODE')) {
+            \Log::info('PayTabs TEST_MODE: Force success fallback for invoice #' . $invoice->id . ' (API error: ' . $ptMsg . ')');
+            $invoice->status     = 'p';
+            $invoice->total_paid = $invoice->total;
+            $invoice->paid_by    = 'paytabs_test_fallback';
+            $invoice->save();
+            $this->updateBookingStatus($invoice);
+            return redirect('/' . $lang . '/invoice/' . $invoice->id . '/')
+                ->with('payment_success', 'SANDBOX: Payment accepted for testing purposes.');
+        }
+
         return redirect('/' . $lang . '/invoice/' . $invoice->id . '/')
-            ->with('payment_error', 'We Are Sorry Your Payment Failed: ' . $errorMsg);
+            ->with('payment_error', 'Payment Failed: ' . $ptMsg . ' (Code: ' . $ptCode . ')');
     }
+
 
     /**
      * Handle PayTabs callback (server-to-server)

@@ -613,68 +613,125 @@ class FrontendTourController extends Controller
                 ->with('success', 'Booking created and confirmed! (Payment bypassed for testing)');
         }
 
-        // Build PayTabs return URL — use APP_URL to ensure correct host on both local and live
-        $appUrl = rtrim(config('app.url'), '/');
-        $returnUrl  = $appUrl . '/payment/return?booking_id=' . $booking->id;
+        // LOCAL SIMULATE: PayTabs rejects localhost URLs (error code 210: Invalid Callback URL)
+        // Set PAYTABS_LOCAL_SIMULATE=true in .env for local testing
+        if (env('PAYTABS_LOCAL_SIMULATE', false)) {
+            \Log::info('PayTabs Local Simulate: Marking booking #' . $booking->id . ' as paid (simulate mode)');
+            $invoice = \App\Models\Invoice::find($booking->invoice_id);
+            if ($invoice) {
+                $invoice->status     = 'p';
+                $invoice->total_paid = $invoice->total;
+                $invoice->paid_by    = 'paytabs_simulated';
+                $invoice->save();
+            }
+            $booking->trip_status = 'con';
+            $booking->save();
+            return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
+                ->with('success', 'Booking confirmed! Payment simulated successfully for local testing.');
+        }
+
+        // Build PayTabs return/callback URLs using APP_URL
+        $appUrl      = rtrim(config('app.url'), '/');
+        $returnUrl   = $appUrl . '/payment/return?booking_id=' . $booking->id;
         $callbackUrl = $appUrl . '/payment/callback';
 
         try {
             $response = \Illuminate\Support\Facades\Http::timeout(20)->withHeaders([
                 'Authorization' => $paytabsConfig['server_key'] ?? '',
-                'Content-Type' => 'application/json',
+                'Content-Type'  => 'application/json',
             ])->post($paytabsConfig['base_url'] . 'payment/request', [
-                'profile_id' => (int)($paytabsConfig['profile_id'] ?? 0),
-                'tran_type' => 'sale',
-                'tran_class' => 'ecom',
-                'cart_id' => (string)$booking->id,
-                'cart_currency' => $paytabsConfig['currency'] ?? 'USD',
-                'cart_amount' => (float)$grandTotal,
+                'profile_id'       => (int)($paytabsConfig['profile_id'] ?? 0),
+                'tran_type'        => 'sale',
+                'tran_class'       => 'ecom',
+                'cart_id'          => (string)$booking->id,
+                'cart_currency'    => $paytabsConfig['currency'] ?? 'USD',
+                'cart_amount'      => (float)$grandTotal,
                 'cart_description' => 'Tour Booking: ' . $tourTitle,
-                'paypage_lang' => $lang,
+                'paypage_lang'     => $lang,
                 'customer_details' => [
-                    'name' => $request->input('guest_name'),
-                    'email' => $request->input('email'),
-                    'phone' => $request->input('phone', '00000000'),
+                    'name'    => $request->input('guest_name'),
+                    'email'   => $request->input('email'),
+                    'phone'   => $request->input('phone', '00000000'),
                     'street1' => 'n/a',
-                    'city' => 'Amman',
-                    'state' => 'Amman',
+                    'city'    => 'Amman',
+                    'state'   => 'Amman',
                     'country' => 'JO',
-                    'zip' => '11181',
+                    'zip'     => '11181',
                 ],
                 'callback' => $callbackUrl,
                 'return'   => $returnUrl,
             ]);
 
+            \Log::info('PayTabs Booking Request', [
+                'http_code'  => $response->status(),
+                'booking_id' => $booking->id,
+                'response'   => $response->json(),
+            ]);
+
             if ($response->successful()) {
                 $data = $response->json();
                 if (isset($data['redirect_url'])) {
-                    if (isset($data['tran_ref'])) {
-                        session([
-                            'paytabs_tran_ref' => $data['tran_ref'],
-                            'paytabs_booking_id' => $booking->id,
-                        ]);
-                    }
+                    session([
+                        'paytabs_tran_ref'   => $data['tran_ref'] ?? '',
+                        'paytabs_booking_id' => $booking->id,
+                    ]);
                     return redirect($data['redirect_url']);
                 }
             }
 
-            // PayTabs failed - log and redirect with error
-            $errorMsg = 'Payment initialization failed.';
+            // PayTabs API returned error — extract exact message
             $respData = $response->json();
-            if (isset($respData['message'])) {
-                $errorMsg .= ' ' . $respData['message'];
+            $ptCode   = $respData['code']    ?? '';
+            $ptMsg    = $respData['message'] ?? 'Unknown error (HTTP ' . $response->status() . ')';
+            \Log::error('PayTabs Booking Payment Failed', [
+                'http_code'  => $response->status(),
+                'pt_code'    => $ptCode,
+                'pt_msg'     => $ptMsg,
+                'booking_id' => $booking->id,
+            ]);
+
+            // In test mode: force success as fallback when API fails
+            if (env('PAYTABS_TEST_MODE')) {
+                \Log::info('PayTabs TEST_MODE: Force success fallback for booking #' . $booking->id);
+                $invoice = \App\Models\Invoice::find($booking->invoice_id);
+                if ($invoice) {
+                    $invoice->status     = 'p';
+                    $invoice->total_paid = $invoice->total;
+                    $invoice->paid_by    = 'paytabs_test_fallback';
+                    $invoice->save();
+                }
+                $booking->trip_status = 'con';
+                $booking->save();
+                return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
+                    ->with('success', 'Booking confirmed! (Test mode — payment accepted)');
             }
-            \Log::error('PayTabs Payment Request Failed', ['response' => $response->body()]);
 
             return redirect('/' . $lang . '/tours/book_tour/' . $tour->id)
-                ->with('error', $errorMsg . '. Please try again or contact support.');
+                ->with('error', 'Payment gateway error: ' . $ptMsg . '. Please try again or contact support.');
 
         } catch (\Exception $e) {
-            \Log::error('PayTabs Exception', ['error' => $e->getMessage()]);
+            \Log::error('PayTabs Booking Exception', ['error' => $e->getMessage(), 'booking_id' => $booking->id]);
+
+            // Exception fallback in test mode
+            if (env('PAYTABS_TEST_MODE')) {
+                $invoice = \App\Models\Invoice::find($booking->invoice_id);
+                if ($invoice) {
+                    $invoice->status     = 'p';
+                    $invoice->total_paid = $invoice->total;
+                    $invoice->paid_by    = 'paytabs_test_fallback';
+                    $invoice->save();
+                }
+                $booking->trip_status = 'con';
+                $booking->save();
+                return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
+                    ->with('success', 'Booking confirmed! (Test mode — gateway exception bypassed)');
+            }
+
             return redirect('/' . $lang . '/tours/booking_success/' . $booking->id)
-                ->with('success', 'Booking created. Payment gateway unavailable - our team will contact you.');
+                ->with('success', 'Booking created. Payment gateway unavailable — our team will contact you.');
         }
     }
+
 
     public function quotation($lang, $id)
     {

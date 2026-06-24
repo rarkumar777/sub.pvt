@@ -675,6 +675,67 @@ class PaymentController extends Controller
             $booking->trip_status = 'con';
             $booking->save();
 
+            // --- Send payment confirmation emails ---
+            $tour    = \App\Models\Tour::find($booking->tour_id);
+            $content = $tour ? \App\Models\TourContent::where('tour_id', $tour->id)->where('lang', $lang)->first() : null;
+            $tourTitle  = $content->title ?? ($tour->title ?? 'Tour Booking');
+            $guestUser  = \App\Models\User::find($booking->user_id);
+            $guestName  = $booking->guest_name ?: ($guestUser->name ?? 'Guest');
+            $guestEmail = $guestUser->email ?? '';
+            $totalAmt   = $invoice ? number_format($invoice->total, 2) : '0.00';
+
+            // 1) Admin notification
+            try {
+                $adminBody  = "<h2 style='color:#10b981;'>✅ Payment Confirmed — PV Travels</h2>";
+                $adminBody .= "<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:14px;'>";
+                $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;width:140px;'>Booking ID:</td><td style='padding:8px;'><strong>#BK-{$booking->id}</strong></td></tr>";
+                $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Tour:</td><td style='padding:8px;'>{$tourTitle}</td></tr>";
+                $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Guest:</td><td style='padding:8px;'>{$guestName}</td></tr>";
+                $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Email:</td><td style='padding:8px;'>{$guestEmail}</td></tr>";
+                $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Travel Date:</td><td style='padding:8px;'>{$booking->travel_date}</td></tr>";
+                $adminBody .= "<tr style='background:#f9f9f9;'><td style='padding:8px;font-weight:bold;color:#555;'>Amount Paid:</td><td style='padding:8px;font-weight:bold;color:#16a34a;'>USD {$totalAmt}</td></tr>";
+                $adminBody .= "<tr><td style='padding:8px;font-weight:bold;color:#555;'>Invoice #:</td><td style='padding:8px;'>#{$invoice->id}</td></tr>";
+                $adminBody .= "</table>";
+                $adminBody .= "<hr style='margin:20px 0;'><p style='color:#999;font-size:12px;'>Payment received via PayTabs. Booking automatically confirmed.</p>";
+
+                \Illuminate\Support\Facades\Mail::html($adminBody, function ($m) use ($booking, $tourTitle, $guestName) {
+                    $m->to('info@pvt.jo', 'PV Travels')
+                      ->to('rarkumar777@gmail.com', 'Admin')
+                      ->subject("💰 Payment Received #BK-{$booking->id}: {$tourTitle} — {$guestName}");
+                });
+            } catch (\Exception $e) {
+                \Log::error('PayTabs return admin email failed: ' . $e->getMessage());
+            }
+
+            // 2) Customer confirmation
+            if (!empty($guestEmail)) {
+                try {
+                    $custBody  = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;'>";
+                    $custBody .= "<div style='background:#10b981;padding:30px;text-align:center;border-radius:8px 8px 0 0;'>";
+                    $custBody .= "<h1 style='color:#fff;margin:0;font-size:24px;'>🎉 Booking Confirmed!</h1></div>";
+                    $custBody .= "<div style='background:#fff;padding:30px;border:1px solid #eee;border-radius:0 0 8px 8px;'>";
+                    $custBody .= "<p style='font-size:16px;'>Dear {$guestName},</p>";
+                    $custBody .= "<p>Your payment has been received and your booking is <strong>confirmed</strong>!</p>";
+                    $custBody .= "<table style='border-collapse:collapse;width:100%;font-size:14px;margin:20px 0;'>";
+                    $custBody .= "<tr style='background:#f9f9f9;'><td style='padding:10px;font-weight:bold;color:#555;'>Booking ID:</td><td style='padding:10px;font-weight:bold;'>#BK-{$booking->id}</td></tr>";
+                    $custBody .= "<tr><td style='padding:10px;font-weight:bold;color:#555;'>Tour:</td><td style='padding:10px;'>{$tourTitle}</td></tr>";
+                    $custBody .= "<tr style='background:#f9f9f9;'><td style='padding:10px;font-weight:bold;color:#555;'>Travel Date:</td><td style='padding:10px;'>{$booking->travel_date}</td></tr>";
+                    $custBody .= "<tr><td style='padding:10px;font-weight:bold;color:#555;'>Amount Paid:</td><td style='padding:10px;font-weight:bold;color:#16a34a;'>USD {$totalAmt}</td></tr>";
+                    $custBody .= "</table>";
+                    $custBody .= "<p>Our team will contact you with full trip details. For any questions contact us at <a href='mailto:info@pvt.jo'>info@pvt.jo</a> or call <a href='tel:+96277996601'>+962 77996601</a>.</p>";
+                    $custBody .= "<p style='margin-top:30px;'>Best regards,<br><strong>PV Travels Team</strong></p>";
+                    $custBody .= "</div></div>";
+
+                    \Illuminate\Support\Facades\Mail::html($custBody, function ($m) use ($booking, $tourTitle, $guestName, $guestEmail) {
+                        $m->to($guestEmail, $guestName)
+                          ->subject("🎉 Booking Confirmed #BK-{$booking->id}: {$tourTitle} — PV Travels");
+                    });
+                } catch (\Exception $e) {
+                    \Log::error('PayTabs return customer email failed: ' . $e->getMessage());
+                }
+            }
+            // --- End confirmation emails ---
+
             session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
 
             return redirect('/' . $lang . '/tours/booking_success/' . $bookingId)

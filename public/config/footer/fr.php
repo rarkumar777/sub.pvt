@@ -53,7 +53,7 @@
 <pre class="d-gap"><span style="font-size: 12pt;">  Mon Compte</span></pre>
 <ul>
 <li><span style="font-size: 10pt;"><em><a href="fr/users/account/edit-account/" title="Mon compte">Mon compte</a></em></span></li>
-<li><span style="font-size: 10pt;"><em><a href="fr/users/account/my-tours/tours/" title="Historique de réservation">Historique de réservation</a></em></span></li>
+<li><span style="font-size: 10pt;"><em><a href="fr/users/account/my-bookings/" title="Historique de réservation">Historique de réservation</a></em></span></li>
 </ul>
 </div>
 </div>

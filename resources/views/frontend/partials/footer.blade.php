@@ -116,7 +116,7 @@
                 'title' => 'My Account',
                 'links' => [
                     ['href' => '/' . $lang . '/users/account/edit-account/', 'text' => 'My Account', 'title' => 'My Account'],
-                    ['href' => '/' . $lang . '/users/account/my-tours/tours/', 'text' => 'Booking History', 'title' => 'Booking History']
+                    ['href' => '/' . $lang . '/users/account/my-bookings/', 'text' => 'Booking History', 'title' => 'Booking History']
                 ]
             ]
         ];

@@ -53,7 +53,7 @@
 <pre class="d-gap"><span style="font-size: 12pt;">  Mi Cuenta</span></pre>
 <ul>
 <li><span style="font-size: 10pt;"><em><a href="es/users/account/edit-account/" title="Mi Cuenta">Mi Cuenta</a></em></span></li>
-<li><span style="font-size: 10pt;"><em><a href="es/users/account/my-tours/tours/" title="Historial de Reservas">Historial de Reservas</a></em></span></li>
+<li><span style="font-size: 10pt;"><em><a href="es/users/account/my-bookings/" title="Historial de Reservas">Historial de Reservas</a></em></span></li>
 </ul>
 </div>
 </div>

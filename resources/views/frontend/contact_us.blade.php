@@ -132,28 +132,28 @@
                         <!-- Name -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Full Name <span class="text-red-400">*</span></label>
-                            <input type="text" name="name" value="{{ old('name') }}" required placeholder="John Doe" autocomplete="off"
+                            <input type="text" name="name" value="ramatest4" required placeholder="John Doe" autocomplete="off"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-800 bg-gray-50 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all outline-none placeholder:text-gray-400">
                         </div>
 
                         <!-- Email -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address <span class="text-red-400">*</span></label>
-                            <input type="email" name="email" value="{{ old('email') }}" required placeholder="john@example.com" autocomplete="off"
+                            <input type="email" name="email" value="ramashankarkumar666@gmail.com" required placeholder="john@example.com" autocomplete="off"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-800 bg-gray-50 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all outline-none placeholder:text-gray-400">
                         </div>
 
                         <!-- Phone -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Phone Number</label>
-                            <input type="tel" name="phone" value="{{ old('phone') }}" placeholder="+962 77X XXX XXX" autocomplete="off"
+                            <input type="tel" name="phone" value="8173098981" placeholder="+962 77X XXX XXX" autocomplete="off"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-800 bg-gray-50 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all outline-none placeholder:text-gray-400">
                         </div>
 
                         <!-- Subject -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Subject</label>
-                            <input type="text" name="subject" value="{{ old('subject') }}" placeholder="How can we help?" autocomplete="off"
+                            <input type="text" name="subject" value="subject_test" placeholder="How can we help?" autocomplete="off"
                                 class="w-full border border-gray-200 rounded-xl px-4 py-3.5 text-sm font-medium text-gray-800 bg-gray-50 focus:bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all outline-none placeholder:text-gray-400">
                         </div>
                     </div>

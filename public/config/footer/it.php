@@ -53,7 +53,7 @@
 <pre class="d-gap"><span style="font-size: 12pt;">   Il Mio Account</span></pre>
 <ul>
 <li><span style="font-size: 10pt;"><em><a href="it/users/account/edit-account/" title="Il Mio Account">Il Mio Account</a></em></span></li>
-<li><span style="font-size: 10pt;"><em><a href="en/users/account/my-tours/tours/" title="Cronologia delle prenotazioni">Cronologia Delle Prenotazioni</a></em></span></li>
+<li><span style="font-size: 10pt;"><em><a href="it/users/account/my-bookings/" title="Cronologia delle prenotazioni">Cronologia Delle Prenotazioni</a></em></span></li>
 </ul>
 </div>
 </div>

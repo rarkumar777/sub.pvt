@@ -58,6 +58,31 @@
     .body-wrap .d-pad > .pad > p strong {
         color: #333333 !important;
     }
+    /* Align text (md-7) on left and image (md-5) on right on desktop */
+    @media (min-width: 768px) {
+        .body-wrap .pad .md-7 {
+            width: 58% !important;
+            flex: 0 0 58% !important;
+        }
+        .body-wrap .pad .md-5 {
+            width: 38% !important;
+            flex: 0 0 38% !important;
+            margin-left: auto !important;
+        }
+        .body-wrap .pad .md-5 img {
+            max-width: 100% !important;
+            height: auto !important;
+            display: block;
+            margin-left: auto;
+        }
+    }
+    @media (max-width: 767px) {
+        .body-wrap .pad .md-7,
+        .body-wrap .pad .md-5 {
+            width: 100% !important;
+            flex: 0 0 100% !important;
+        }
+    }
 </style>
 <div class="body-wrap" style="padding-top: 80px;">
     <div class="wrap">

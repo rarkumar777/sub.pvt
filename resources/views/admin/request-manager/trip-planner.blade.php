@@ -742,10 +742,16 @@ button[type="submit"].btn-act:hover{background:#e25822 !important;border-color:#
                                         $cdTitle = $cdContent ? $cdContent->title : 'Untitled';
                                         $cdDesc = $cdContent ? $cdContent->description : '';
                                         $cdImages = @unserialize($cd->images);
-                                        $cdImg = is_array($cdImages) && !empty($cdImages) ? $cdImages[0] : null;
-                                        if ($cdImg && !str_starts_with($cdImg, 'http')) $cdImg = '/' . ltrim($cdImg, '/');
+                                        if (!is_array($cdImages)) $cdImages = [];
+                                        // Normalize all image paths
+                                        $cdImages = array_values(array_filter(array_map(function($img) {
+                                            if (!$img) return null;
+                                            return (!str_starts_with($img, 'http')) ? '/' . ltrim($img, '/') : $img;
+                                        }, $cdImages)));
+                                        $cdImg = !empty($cdImages) ? $cdImages[0] : null;
+                                        $cdImagesJson = json_encode($cdImages);
                                     @endphp
-                                    <div class="saved-day-card lib-item lib-days" data-type="days" data-id="{{ $cd->id }}" data-title="{{ e($cdTitle) }}" data-desc="{{ e($cdDesc) }}" onclick="useSavedDay({{ $cd->id }},'{{ e($cdTitle) }}','{{ e(addslashes($cdDesc)) }}','{{ $cdImg ?: '' }}')" style="background-image:url('{{ $cdImg ?: '/uploads/filemanager/Photos/Petra/Kahzneh.jpg' }}')">
+                                    <div class="saved-day-card lib-item lib-days" data-type="days" data-id="{{ $cd->id }}" data-title="{{ e($cdTitle) }}" data-desc="{{ e($cdDesc) }}" data-images="{{ e($cdImagesJson) }}" onclick="useSavedDay(this)" style="background-image:url('{{ $cdImg ?: '/uploads/filemanager/Photos/Petra/Kahzneh.jpg' }}')">
                                         
                                         <div class="sdc-title">{{ $cdTitle }}</div>
                                     </div>
@@ -1831,9 +1837,21 @@ function searchLibrary(q){
     });
 }
 
-function useSavedDay(id, title, desc, img){
+function useSavedDay(el){
     if(!itinId){toast('Save personalization first');return}
-    var d={title:title,description:desc,photos:img?[img]:[]};
+    // Read all data safely from DOM attributes
+    var cannedDayId = el.getAttribute('data-id') || '';
+    var title = el.getAttribute('data-title') || '';
+    var desc = el.getAttribute('data-desc') || '';
+    var imgsRaw = el.getAttribute('data-images') || '[]';
+    var imgsArr = [];
+    try { imgsArr = JSON.parse(imgsRaw); if(!Array.isArray(imgsArr)) imgsArr = []; } catch(e){ imgsArr = []; }
+    // Normalize paths
+    imgsArr = imgsArr.filter(function(u){ return !!u; }).map(function(u){
+        return (u.indexOf('http') === 0 || u.indexOf('/') === 0) ? u : '/' + u;
+    });
+    var firstImg = imgsArr.length > 0 ? imgsArr[0] : null;
+    var d={title:title,description:desc,photos:imgsArr,canned_day_id:cannedDayId};
     fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day',{
         method:'POST',
         headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf},
@@ -1855,7 +1873,10 @@ function useSavedDay(id, title, desc, img){
             newCard.className = 'tp-day-card active';
             newCard.setAttribute('data-day-id', r.id);
             newCard.setAttribute('onclick', 'selDay('+r.id+',this)');
-            var thumbHtml = img ? '<div class="tp-day-thumb" style="background-image:url(\''+img+'\');background-size:cover;background-position:center;"></div>' : '<div class="tp-day-thumb"><i class="fa fa-image"></i></div>';
+            // Use photos returned by server (from canned day DB lookup)
+            var serverPhotos = r.photos || imgsArr;
+            var thumbImg = (serverPhotos.length > 0) ? serverPhotos[0] : firstImg;
+            var thumbHtml = thumbImg ? '<div class="tp-day-thumb" style="background-image:url(\''+thumbImg+'\');background-size:cover;background-position:center;"></div>' : '<div class="tp-day-thumb"><i class="fa fa-image"></i></div>';
             newCard.innerHTML = thumbHtml + '<div class="tp-day-info"><div class="day-label">Day '+dayNum+'</div><div class="day-title">'+(title||'Untitled')+'</div><div class="day-loc"><i class="fa fa-map-marker"></i> No location</div></div>';
             document.querySelectorAll('.tp-day-card').forEach(function(c){c.classList.remove('active')});
             newCard.classList.add('active');
@@ -1878,7 +1899,8 @@ function useSavedDay(id, title, desc, img){
             } else {
                 document.getElementById('detailDayDate').textContent = '';
             }
-            renderPhotos(img ? [img] : []);
+            // Render ALL images from server (canned day images from DB)
+            renderPhotos(serverPhotos);
 
             document.getElementById('mealNone').checked = true;
             document.getElementById('mealChecks').style.display = 'none';
@@ -2375,7 +2397,7 @@ function autoSaveDay(){
     });
 }
 
-function delDay(id){if(!confirm('Delete this day?'))return;fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+id,{method:'DELETE',headers:{'X-CSRF-TOKEN':csrf}}).then(function(r){return r.json()}).then(function(r){if(r.success){toast('Deleted');var cards=document.querySelectorAll('.tp-day-card');cards.forEach(function(c){if(c.getAttribute('onclick')&&c.getAttribute('onclick').indexOf(id)>=0)c.remove()});closeDayFormInline()}})}
+function delDay(id){if(!confirm('Delete this day?'))return;fetch('/admin/request-manager/'+reqId+'/itinerary/'+itinId+'/day/'+id,{method:'DELETE',headers:{'X-CSRF-TOKEN':csrf}}).then(function(r){return r.json()}).then(function(r){if(r.success){toast('Deleted');var cards=document.querySelectorAll('.tp-day-card');cards.forEach(function(c){if(c.getAttribute('onclick')&&c.getAttribute('onclick').indexOf(id)>=0)c.remove()});closeDayFormInline();updateAllDayLabelsAndDates()}})}
 
 function calcTotal(){
     var prices=document.querySelectorAll('.pax-price');var sum=0;

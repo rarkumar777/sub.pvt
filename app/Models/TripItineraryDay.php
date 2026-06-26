@@ -10,7 +10,7 @@ class TripItineraryDay extends Model
         'trip_itinerary_id', 'day_number', 'duration', 'title', 'description',
         'destinations', 'breakfast', 'lunch', 'dinner',
         'accommodation_name', 'accommodation_description',
-        'accommodation_category', 'accommodation_stars', 'accommodation_website', 'photos', 'services',
+        'accommodation_category', 'accommodation_stars', 'accommodation_website', 'photos', 'services', 'canned_day_id',
     ];
 
     protected $casts = [

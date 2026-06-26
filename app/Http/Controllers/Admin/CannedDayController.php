@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\TourCannedDay;
 use App\Models\TourCannedDayContent;
+use App\Models\TripItineraryDay;
 use Illuminate\Http\Request;
 
 class CannedDayController extends Controller
@@ -188,6 +189,9 @@ class CannedDayController extends Controller
             'included' => serialize($included),
             'excluded' => serialize($excluded),
         ]);
+
+        // Sync photos to all linked trip itinerary days
+        $this->syncPhotosToLinkedDays($cannedDay);
 
         // Save contents per language
         foreach ($langs as $L) {
@@ -422,6 +426,9 @@ class CannedDayController extends Controller
         $day->images = serialize(array_values($allImages));
         $day->save();
 
+        // Sync photos to all linked trip itinerary days
+        $this->syncPhotosToLinkedDays($day);
+
         // All language contents
         foreach ($langs as $L) {
             $title       = trim(strval($request->input('title_' . $L, '')));
@@ -542,5 +549,24 @@ class CannedDayController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
         return response()->json($items);
+    }
+
+    /**
+     * Sync canned day photos to all linked trip itinerary days
+     */
+    private function syncPhotosToLinkedDays(TourCannedDay $cannedDay)
+    {
+        $cdImages = @unserialize($cannedDay->images);
+        if (!is_array($cdImages)) $cdImages = [];
+
+        // Normalize paths
+        $cdImages = array_values(array_filter(array_map(function($img) {
+            if (!$img) return null;
+            return (!str_starts_with($img, 'http')) ? '/' . ltrim($img, '/') : $img;
+        }, $cdImages)));
+
+        // Update all trip itinerary days linked to this canned day
+        TripItineraryDay::where('canned_day_id', $cannedDay->id)
+            ->update(['photos' => json_encode($cdImages)]);
     }
 }

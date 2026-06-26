@@ -143,14 +143,34 @@ class RequestManagerController extends Controller
         if ($request->has('services')) {
             $data['services'] = $request->input('services');
         }
-        if ($request->has('photos')) {
+
+        // If canned_day_id is provided, look up images directly from DB (guaranteed)
+        $cannedDayId = $request->input('canned_day_id');
+        if ($cannedDayId) {
+            $cannedDay = \App\Models\TourCannedDay::find($cannedDayId);
+            if ($cannedDay) {
+                $cdImages = @unserialize($cannedDay->images);
+                if (is_array($cdImages) && !empty($cdImages)) {
+                    // Normalize image paths
+                    $cdImages = array_values(array_filter(array_map(function($img) {
+                        if (!$img) return null;
+                        return (!str_starts_with($img, 'http')) ? '/' . ltrim($img, '/') : $img;
+                    }, $cdImages)));
+                    $data['photos'] = $cdImages;
+                }
+            }
+        }
+
+        // Fallback: use photos from request if no canned day images found
+        if (empty($data['photos']) && $request->has('photos')) {
             $data['photos'] = $request->input('photos');
         }
+
         $day = TripItineraryDay::create(array_merge(
             $data,
-            ['trip_itinerary_id' => $itin->id, 'day_number' => $maxDay + 1]
+            ['trip_itinerary_id' => $itin->id, 'day_number' => $maxDay + 1, 'canned_day_id' => $cannedDayId ?: null]
         ));
-        return response()->json(['success' => true, 'id' => $day->id]);
+        return response()->json(['success' => true, 'id' => $day->id, 'photos' => $day->photos ?? []]);
     }
 
     public function showDay($id, $itinId, $dayId)
@@ -175,6 +195,14 @@ class RequestManagerController extends Controller
     {
         $day = TripItineraryDay::where('trip_itinerary_id', $itinId)->findOrFail($dayId);
         $day->delete();
+
+        // Renumber remaining days sequentially (1, 2, 3...)
+        $remainingDays = TripItineraryDay::where('trip_itinerary_id', $itinId)
+            ->orderBy('day_number')->get();
+        foreach ($remainingDays as $index => $d) {
+            $d->update(['day_number' => $index + 1]);
+        }
+
         return response()->json(['success' => true]);
     }
 

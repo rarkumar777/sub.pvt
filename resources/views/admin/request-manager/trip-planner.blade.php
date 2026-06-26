@@ -1069,8 +1069,7 @@ button[type="submit"].btn-act:hover{background:#e25822 !important;border-color:#
                 </div>
             </div>
             {{-- Per-traveller rows --}}
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-                <button type="button" onclick="recalcFromServices()" style="background:none;border:1px solid #005e46;color:#005e46;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;"><i class="fa fa-refresh"></i> Sync from services</button>
+            <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:4px;">
                 <div class="apply-all" style="margin:0">
                     <a href="#" onclick="applyToAll();return false">Apply to all</a> <i class="fa fa-info-circle"></i>
                 </div>
@@ -2364,6 +2363,7 @@ function autoSaveDay(){
                 if(typeof initDragAndDrop === 'function') initDragAndDrop();
             }
             if(ind){ ind.innerHTML='<i class="fa fa-check-circle"></i> Saved'; setTimeout(function(){ind.style.display='none';}, 3000); }
+            recalcFromServices();
             if(did) {
                 var activeCard = document.querySelector('.tp-day-card.active');
                 if(activeCard) {

@@ -930,7 +930,7 @@ button[type="submit"].btn-act:hover{background:#e25822 !important;border-color:#
                     if($qty < 1) $qty = 1;
                     $days = intval($svc['stay_duration'] ?? 1);
                     if($days < 1) $days = 1;
-                    $lineTotal = $cost * $qty * $days;
+                    $lineTotal = $cost * $qty;
                     $allServices[] = [
                         'day'          => $day->day_number,
                         'name'         => $svc['name'] ?? 'Service',
@@ -947,8 +947,8 @@ button[type="submit"].btn-act:hover{background:#e25822 !important;border-color:#
         }
 
         $savedPpp = optional($tripRequest->latestItinerary)->price_per_person ?? null;
-        $ppp = $savedPpp !== null ? $savedPpp : ($serviceTotal > 0 ? round($serviceTotal / $numPax, 2) : ($displayTotal > 0 ? round($displayTotal / $numPax, 2) : ''));
-        $effectiveTotal = $displayTotal > 0 ? $displayTotal : $serviceTotal;
+        $ppp = $savedPpp !== null ? $savedPpp : ($serviceTotal > 0 ? round($serviceTotal / $numPax, 2) : '');
+        $effectiveTotal = $serviceTotal;
     @endphp
 
     {{-- ══ SERVICE COST BREAKDOWN CARD ══ --}}

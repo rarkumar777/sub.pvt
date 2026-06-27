@@ -55,6 +55,7 @@
                     <div class="absolute left-0 top-[64px] hidden group-hover:block transition-all z-[110]">
                         <div class="bg-white shadow-xl py-1 min-w-[220px] rounded-b-md border-t-2 border-[#ba6a38]">
                             @foreach($navChildren[$item->lang_id] as $child)
+                                @if($child->lang_id == 22 || $child->link == '#' || str_contains($child->link, '/#') || trim($child->link) == '') @continue @endif
                                 <a href="{{ $child->link }}" class="block px-5 py-3 text-[13px] font-semibold text-gray-800 hover:bg-orange-50 hover:text-[#a44b11] border-b border-gray-50 last:border-0">{{ $child->label }}</a>
                             @endforeach
                         </div>
@@ -179,6 +180,7 @@
                     @if(isset($navChildren[$item->lang_id]) && count($navChildren[$item->lang_id]) > 0)
                         <div class="pl-4 space-y-2 border-l-2 border-orange-200">
                             @foreach($navChildren[$item->lang_id] as $child)
+                                @if($child->lang_id == 22 || $child->link == '#' || str_contains($child->link, '/#') || trim($child->link) == '') @continue @endif
                                 <a href="{{ $child->link }}" class="block text-sm text-gray-600 font-medium hover:text-[#a44b11] transition-colors">{{ $child->label }}</a>
                             @endforeach
                         </div>

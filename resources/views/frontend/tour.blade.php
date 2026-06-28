@@ -8,6 +8,7 @@
     $currRates   = ['USD'=>1,'JOD'=>0.709,'EUR'=>0.92];
     $sym  = $currSymbols[$activeCurrency] ?? '$';
     $rate = $currRates[$activeCurrency] ?? 1;
+    $currCode = $activeCurrency ?? 'USD';
 
     // Try min_price first; if 0, calculate from pricing_bases
     $rawPrice = floatval($tour->min_price ?? 0);
@@ -29,6 +30,24 @@
     }
 
     $displayPrice = round($rawPrice * $rate);
+
+    // Pricing modal data
+    $hotelCategoryNames = [
+        0 => 'Without Hotel Accommodations',
+        1 => '1 Star',
+        2 => '2 Star',
+        3 => '3 Star',
+        4 => '4 Star',
+        5 => '5 Star',
+    ];
+    $modalBases  = $tour->pricing_bases  ? @unserialize($tour->pricing_bases)  : [];
+    $modalGroups = $tour->pricing_groups ? @unserialize($tour->pricing_groups) : [];
+    
+    if (!is_array($modalBases)) {
+        $modalBases = [];
+    }
+    
+    $hasPricingModal = count($modalBases) > 0;
 @endphp
 <!-- TOUR HERO SECTION -->
 <section class="relative h-[650px] flex items-end overflow-hidden -mt-[92px]">
@@ -235,9 +254,12 @@
                             <p class="text-[11px] font-black text-blue-400 uppercase tracking-[0.3em]">PACKAGE DEAL</p>
                             <span class="bg-amber-500 text-[10px] font-black px-2.5 py-1 rounded text-[#0f172a] uppercase shadow-lg shadow-amber-500/20">SAVE 15%</span>
                         </div>
-                        <div class="flex items-baseline gap-2">
+                        <div class="flex items-baseline gap-2" style="flex-wrap:wrap;">
                             <span class="text-6xl font-black text-amber-400 leading-none">{{ $sym }}{{ number_format($displayPrice, 0) }}</span>
                             <span class="text-sm font-bold opacity-40 italic font-serif">/ person</span>
+                            @if($hasPricingModal)
+                            <button type="button" onclick="document.getElementById('pvtPricingModal').classList.add('pvt-modal-active'); document.body.style.overflow='hidden';" title="View full pricing" style="background:#3b5fa0;color:white;border:none;border-radius:50%;width:24px;height:24px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:4px;">&#x2139;</button>
+                            @endif
                         </div>
                     </div>
                     
@@ -363,4 +385,85 @@
     transition: transform 1.2s cubic-bezier(0.165, 0.84, 0.44, 1);
 }
 </style>
+
+{{-- ═══ FULL PRICING MODAL ═══ --}}
+@if($hasPricingModal)
+<style>
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: translateY(-40px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pvt-modal-active {
+    display: flex !important;
+    animation: modalFadeIn 0.3s ease-out forwards;
+}
+.pvt-modal-active .pvt-modal-content {
+    animation: modalScaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+</style>
+<div id="pvtPricingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:99999; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto;" onclick="if(event.target===this){this.classList.remove('pvt-modal-active');document.body.style.overflow='';}">
+    <div class="pvt-modal-content" style="background:white; border-radius:6px; width:100%; max-width:700px; box-shadow:0 20px 60px rgba(0,0,0,0.35); position:relative;">
+        {{-- Modal Header --}}
+        <div style="padding:14px 20px; border-bottom:1px solid #ddd; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-weight:bold; font-size:16px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#3b5fa0; color:white; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">&#x2139;</span>
+                Pricing
+            </span>
+            <button type="button" onclick="document.getElementById('pvtPricingModal').classList.remove('pvt-modal-active'); document.body.style.overflow='';" style="font-size:24px; background:none; border:none; cursor:pointer; color:#666; line-height:1; padding:0 4px; transition:color 0.2s;" onmouseover="this.style.color='#f00'" onmouseout="this.style.color='#666'">&times;</button>
+        </div>
+
+        {{-- Modal Body --}}
+        <div style="max-height:75vh; overflow-y:auto;">
+            @foreach($modalBases as $hotelKey => $base)
+            @php
+                $hotelName  = $hotelCategoryNames[intval($hotelKey)] ?? (intval($hotelKey).' Star');
+                $basePrice  = number_format(floatval($base['price'] ?? 0) * $rate, 2);
+                $suppPrice  = number_format(floatval($base['single_supplement'] ?? 0) * $rate, 2);
+                $grpRows    = $modalGroups[$hotelKey] ?? [];
+            @endphp
+            {{-- Hotel Category Header --}}
+            <div style="background:#555555; color:white; padding:10px 16px; font-weight:bold; font-size:14px;">{{ $hotelName }}</div>
+
+            {{-- Base Price Row --}}
+            <div style="padding:10px 16px; display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid #eeeeee; flex-wrap:wrap; gap:6px;">
+                <span>Price: {{ $basePrice }} {{ $currCode }}</span>
+                <span>Single supplement fee: {{ $suppPrice }} {{ $currCode }}</span>
+            </div>
+
+            @if(count($grpRows) > 0)
+            {{-- Traveler Ranges Table --}}
+            <div style="padding:12px 16px 4px;">
+                <div style="text-align:center; font-weight:bold; font-size:13px; margin-bottom:8px;">Price Ranges Based on Travelers Number</div>
+                <table style="width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px;">
+                    <thead>
+                        <tr style="background:#d0e4f7;">
+                            <th style="padding:8px 10px; text-align:center; color:#2c5282; font-weight:bold;">Min Number Of Travelers</th>
+                            <th style="padding:8px 10px; text-align:center; color:#2c5282; font-weight:bold;">Adult</th>
+                            <th style="padding:8px 10px; text-align:center; color:#2c5282; font-weight:bold;">Child</th>
+                            <th style="padding:8px 10px; text-align:center; color:#2c5282; font-weight:bold;">Infant</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($grpRows as $minPax => $prices)
+                        <tr style="border-bottom:1px solid #eeeeee;">
+                            <td style="padding:8px 10px; text-align:center;">{{ $minPax }}</td>
+                            <td style="padding:8px 10px; text-align:center;">{{ number_format(floatval($prices['adult'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                            <td style="padding:8px 10px; text-align:center;">{{ number_format(floatval($prices['child'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                            <td style="padding:8px 10px; text-align:center;">{{ number_format(floatval($prices['infant'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @endif
+            @endforeach
+        </div>
+    </div>
+</div>
+@endif
+
 @endsection

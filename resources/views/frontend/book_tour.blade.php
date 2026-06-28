@@ -8,7 +8,43 @@
     $currRates = ['USD'=>1,'JOD'=>0.709,'EUR'=>0.92];
     $sym = $currSymbols[$activeCurrency] ?? '$';
     $rate = $currRates[$activeCurrency] ?? 1;
-    $displayPrice = round($tour->min_price * $rate);
+    $currCode = $activeCurrency ?? 'USD';
+
+    // Try min_price first; if 0, calculate from pricing_bases
+    $rawPrice = floatval($tour->min_price ?? 0);
+    if ($rawPrice <= 0) {
+        foreach (['pricing_bases', 'pricing_bases_low', 'pricing_bases_high'] as $field) {
+            $bases = $tour->$field ? @unserialize($tour->$field, ['allowed_classes' => false]) : [];
+            if (is_array($bases) && count($bases) > 0) {
+                foreach ($bases as $base) {
+                    $p = floatval($base['price'] ?? 0);
+                    if ($p > 0 && ($rawPrice <= 0 || $p < $rawPrice)) {
+                        $rawPrice = $p;
+                    }
+                }
+                if ($rawPrice > 0) break;
+            }
+        }
+    }
+    $displayPrice = round($rawPrice * $rate);
+
+    // Pricing modal data
+    $hotelCategoryNames = [
+        0 => 'Without Hotel Accommodations',
+        1 => '1 Star',
+        2 => '2 Star',
+        3 => '3 Star',
+        4 => '4 Star',
+        5 => '5 Star',
+    ];
+    $modalBases  = $tour->pricing_bases  ? @unserialize($tour->pricing_bases)  : [];
+    $modalGroups = $tour->pricing_groups ? @unserialize($tour->pricing_groups) : [];
+    
+    if (!is_array($modalBases)) {
+        $modalBases = [];
+    }
+    
+    $hasPricingModal = count($modalBases) > 0;
 @endphp
 <!-- BOOKING HERO SECTION -->
 <section class="relative h-[350px] flex items-center justify-center overflow-hidden -mt-[92px]">
@@ -221,6 +257,105 @@
                 </form>
 
                 <script>
+                // Live Pricing Calculation
+                const pvtPricingBases = {!! json_encode($modalBases) !!};
+                const pvtPricingGroups = {!! json_encode($modalGroups) !!};
+                const pvtCurrencyRate = {{ $rate }};
+                const pvtCurrencyCode = '{{ $currCode }}';
+                const pvtCurrencySym = '{{ $sym }}';
+
+                function updateLivePricing() {
+                    const form = document.getElementById('bookingForm');
+                    if (!form) return;
+
+                    const hotelGrade = form.querySelector('[name=hotel_grade]').value;
+                    const adults = parseInt(form.querySelector('[name=adults]').value) || 0;
+                    const children = parseInt(form.querySelector('[name=children]').value) || 0;
+                    const infants = parseInt(form.querySelector('[name=infants]').value) || 0;
+                    const singleRooms = parseInt(form.querySelector('[name=rooms_single]').value) || 0;
+                    const doubleRooms = parseInt(form.querySelector('[name=rooms_double]').value) || 0;
+                    const tripleRooms = parseInt(form.querySelector('[name=rooms_triple]').value) || 0;
+
+                    // Total actual travelers
+                    const totalTravelers = adults + children + infants;
+
+                    // Total bed capacity selected by rooms
+                    const totalBedCapacity = (singleRooms * 1) + (doubleRooms * 2) + (tripleRooms * 3);
+
+                    // Effective pax = max of actual travelers OR total bed capacity
+                    // (if rooms hold more people than declared, charge for full room capacity)
+                    const effectivePax = Math.max(totalTravelers, totalBedCapacity);
+
+                    let adultPrice = 0;
+                    let childPrice = 0;
+                    let infantPrice = 0;
+                    let singleSupplement = 0;
+                    let basePrice = 0;
+
+                    if (pvtPricingBases[hotelGrade]) {
+                        basePrice = parseFloat(pvtPricingBases[hotelGrade].price) || 0;
+                        singleSupplement = parseFloat(pvtPricingBases[hotelGrade].single_supplement) || 0;
+                        adultPrice = basePrice;
+                        childPrice = basePrice;
+                        infantPrice = 0;
+                    }
+
+                    if (pvtPricingGroups[hotelGrade]) {
+                        const groups = pvtPricingGroups[hotelGrade];
+                        let applicableGroup = null;
+                        let maxPax = -1;
+
+                        for (let minPax in groups) {
+                            let pax = parseInt(minPax);
+                            if (effectivePax >= pax && pax > maxPax) {
+                                applicableGroup = groups[minPax];
+                                maxPax = pax;
+                            }
+                        }
+
+                        if (applicableGroup) {
+                            adultPrice = parseFloat(applicableGroup.adult) || 0;
+                            childPrice = parseFloat(applicableGroup.child) || 0;
+                            infantPrice = parseFloat(applicableGroup.infant) || 0;
+                        }
+                    }
+
+                    // Cost for actual travelers at per-person rate
+                    const travelersCost = (adults * adultPrice) + (children * childPrice) + (infants * infantPrice);
+
+                    // Extra beds in rooms beyond declared travelers (charged at adult rate)
+                    const extraBeds = Math.max(0, totalBedCapacity - totalTravelers);
+                    const extraBedsCost = extraBeds * adultPrice;
+
+                    // Single supplement cost
+                    const totalSupplementCost = singleRooms * singleSupplement;
+
+                    const grandTotal = travelersCost + extraBedsCost + totalSupplementCost;
+
+                    const finalSupplement = (totalSupplementCost * pvtCurrencyRate).toFixed(2);
+                    const finalTotal = (grandTotal * pvtCurrencyRate).toFixed(2);
+
+                    document.getElementById('display_single_supplement').textContent = finalSupplement + ' ' + pvtCurrencyCode;
+                    document.getElementById('display_total').textContent = finalTotal + ' ' + pvtCurrencyCode;
+
+                    if (document.getElementById('display_orange_total')) {
+                        document.getElementById('display_orange_total').textContent = finalTotal;
+                    }
+                }
+
+                document.addEventListener('DOMContentLoaded', function() {
+                    const form = document.getElementById('bookingForm');
+                    if (form) {
+                        const inputs = form.querySelectorAll('select[name=hotel_grade], input[name=adults], input[name=children], input[name=infants], input[name=rooms_single], input[name=rooms_double], input[name=rooms_triple]');
+                        inputs.forEach(input => {
+                            input.addEventListener('change', updateLivePricing);
+                            input.addEventListener('input', updateLivePricing);
+                        });
+                        // Initial calculation on load
+                        updateLivePricing();
+                    }
+                });
+
                 function validateBooking() {
                     var errs = [];
                     var f = document.getElementById('bookingForm');
@@ -334,10 +469,28 @@
 
                     <!-- PRICE BOX -->
                     <div class="bg-orange-600 p-6 rounded-2xl shadow-lg">
-                        <p class="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2 text-center">{{ __('Price Starts From') }}</p>
+                        <p id="price_box_label" class="text-[10px] font-bold text-white/60 uppercase tracking-widest mb-2 text-center">{{ __('Total Price') }}</p>
                         <div class="flex items-center justify-center gap-2">
-                            <span class="text-4xl font-black text-white leading-none">{{ $sym }}{{ number_format($displayPrice, 0) }}</span>
-                            <span class="text-xs font-bold text-white/70">/ {{ __('person') }}</span>
+                            <span class="text-4xl font-black text-white leading-none">{{ $sym }}<span id="display_orange_total">{{ number_format($displayPrice, 0) }}</span></span>
+                        </div>
+                    </div>
+
+                    <!-- TOTAL & SUPPLEMENT FEE (MOVED HERE) -->
+                    <div class="border-2 border-green-500 rounded-xl p-4 bg-white mt-1">
+                        <div class="flex justify-between items-center mb-3 pb-3 border-b border-gray-100">
+                            <span class="text-sm font-bold text-gray-700">{{ __('Single supplement fee') }}</span>
+                            <span class="text-sm font-black text-gray-900" id="display_single_supplement">0</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-bold text-gray-900">{{ __('Total') }}</span>
+                            <div class="flex items-center gap-3">
+                                @if($hasPricingModal)
+                                <button type="button" onclick="document.getElementById('pvtPricingModal').classList.add('pvt-modal-active'); document.body.style.overflow='hidden';" class="w-6 h-6 bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-full flex items-center justify-center transition-colors">
+                                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                                </button>
+                                @endif
+                                <span class="text-lg font-black text-gray-900" id="display_total">0</span>
+                            </div>
                         </div>
                     </div>
 
@@ -525,4 +678,88 @@
     margin-left: 1rem;
 }
 </style>
+
+{{-- ═══ FULL PRICING MODAL ═══ --}}
+@if($hasPricingModal)
+<style>
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: translateY(-40px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pvt-modal-active {
+    display: flex !important;
+    animation: modalFadeIn 0.3s ease-out forwards;
+}
+.pvt-modal-active .pvt-modal-content {
+    animation: modalScaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+</style>
+<div id="pvtPricingModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:99999; align-items:flex-start; justify-content:center; padding:40px 16px; overflow-y:auto;" onclick="if(event.target===this){this.classList.remove('pvt-modal-active');document.body.style.overflow='';}">
+    <div class="pvt-modal-content" style="background:white; border-radius:6px; width:100%; max-width:700px; box-shadow:0 20px 60px rgba(0,0,0,0.35); position:relative;">
+        {{-- Modal Header --}}
+        <div style="padding:14px 20px; border-bottom:1px solid #ddd; display:flex; align-items:center; justify-content:space-between;">
+            <span style="font-weight:bold; font-size:16px; display:flex; align-items:center; gap:8px;">
+                <span style="background:#3b5fa0; color:white; border-radius:50%; width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;">&#x2139;</span>
+                Pricing
+            </span>
+            <button type="button" onclick="document.getElementById('pvtPricingModal').classList.remove('pvt-modal-active'); document.body.style.overflow='';" style="font-size:24px; background:none; border:none; cursor:pointer; color:#666; line-height:1; padding:0 4px; transition:color 0.2s;" onmouseover="this.style.color='#f00'" onmouseout="this.style.color='#666'">&times;</button>
+        </div>
+
+        {{-- Modal Body --}}
+        <div style="max-height:75vh; overflow-y:auto; padding:20px; background:#f9fafb;">
+            @foreach($modalBases as $hotelKey => $base)
+            @php
+                $hotelName  = $hotelCategoryNames[intval($hotelKey)] ?? (intval($hotelKey).' Star');
+                $basePrice  = number_format(floatval($base['price'] ?? 0) * $rate, 2);
+                $suppPrice  = number_format(floatval($base['single_supplement'] ?? 0) * $rate, 2);
+                $grpRows    = $modalGroups[$hotelKey] ?? [];
+            @endphp
+            
+            <div style="margin-bottom:20px; border:1px solid #e5e7eb; border-radius:4px; background:white; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                {{-- Hotel Category Header --}}
+                <div style="background:#555555; color:white; padding:10px 16px; font-weight:bold; font-size:14px; border-bottom:1px solid #444;">{{ $hotelName }}</div>
+
+                {{-- Base Price Row --}}
+                <div style="padding:12px 16px; display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid #eeeeee; color:#333;">
+                    <span>Price: {{ $basePrice }} {{ $currCode }}</span>
+                    <span>Single supplement fee: {{ $suppPrice }} {{ $currCode }}</span>
+                </div>
+
+                @if(count($grpRows) > 0)
+                {{-- Traveler Ranges Table --}}
+                <div style="padding:16px;">
+                    <div style="text-align:center; font-weight:bold; font-size:13px; margin-bottom:12px; color:#111;">Price Ranges Based on Travelers Number</div>
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th style="padding:10px; text-align:center; color:#0284c7; font-weight:bold; border-bottom:1px solid #e5e7eb;">Min Number Of Travelers</th>
+                                <th style="padding:10px; text-align:center; color:#0284c7; font-weight:bold; border-bottom:1px solid #e5e7eb;">Adult</th>
+                                <th style="padding:10px; text-align:center; color:#0284c7; font-weight:bold; border-bottom:1px solid #e5e7eb;">Child</th>
+                                <th style="padding:10px; text-align:center; color:#0284c7; font-weight:bold; border-bottom:1px solid #e5e7eb;">Infant</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($grpRows as $minPax => $prices)
+                            <tr>
+                                <td style="padding:10px; text-align:center; border-bottom:1px solid #f3f4f6;">{{ $minPax }}</td>
+                                <td style="padding:10px; text-align:center; border-bottom:1px solid #f3f4f6;">{{ number_format(floatval($prices['adult'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                                <td style="padding:10px; text-align:center; border-bottom:1px solid #f3f4f6;">{{ number_format(floatval($prices['child'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                                <td style="padding:10px; text-align:center; border-bottom:1px solid #f3f4f6;">{{ number_format(floatval($prices['infant'] ?? 0) * $rate, 2) }} {{ $currCode }}</td>
+                            </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                @endif
+            </div>
+            @endforeach
+        </div>
+    </div>
+</div>
+@endif
+
 @endsection

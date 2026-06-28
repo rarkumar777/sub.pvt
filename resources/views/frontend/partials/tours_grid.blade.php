@@ -127,7 +127,52 @@
 .tour-card-pro .btn-details:hover svg {
     transform: translateX(4px);
 }
+/* Tec details styles */
+.tour-card-tec {
+    margin-bottom: 14px;
+}
+.tour-card-tec-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+.tour-card-tec-label {
+    font-size: 12px;
+    color: #4b5563;
+    font-weight: 500;
+    min-width: 90px;
+}
+.tour-card-tec-dots {
+    display: flex;
+    gap: 3px;
+}
+.tour-card-tec-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #f59e0b;
+    display: inline-block;
+}
+.tour-card-tec-dot.empty {
+    background: #e5e7eb;
+}
+.tour-card-price-range {
+    font-size: 12px;
+    color: #6b7280;
+    text-align: right;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
 </style>
+
+@php
+    // Load tec labels once for all cards (keyed by lang_id)
+    $tecLabelMap = \DB::table('en33_tours_tec')->where('lang', $lang)->pluck('name', 'lang_id')->toArray();
+    if(empty($tecLabelMap)) {
+        $tecLabelMap = \DB::table('en33_tours_tec')->where('lang', 'en')->pluck('name', 'lang_id')->toArray();
+    }
+@endphp
 
 <div class="row" style="display: flex; flex-wrap: wrap; align-items: stretch;">
     @foreach($tours as $tour)
@@ -168,6 +213,84 @@
                         </div>
                     </div>
 
+                    @php
+                        /* Parse tec_details from the tour */
+                        $tecData = [];
+                        if (!empty($tour->tec_details)) {
+                            $parsed = @unserialize($tour->tec_details);
+                            if (is_array($parsed) && isset($parsed['enable']) && isset($parsed['rates'])) {
+                                foreach ($parsed['enable'] as $tecId) {
+                                    $tecId = intval($tecId);
+                                    if ($tecId > 0 && isset($tecLabelMap[$tecId]) && isset($parsed['rates'][$tecId])) {
+                                        $rate = intval($parsed['rates'][$tecId]);
+                                        if ($rate > 0) {
+                                            $tecData[] = ['label' => $tecLabelMap[$tecId], 'rate' => min($rate, 5)];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    @endphp
+
+                    @if(count($tecData) > 0)
+                    <div class="tour-card-tec">
+                        @foreach($tecData as $tec)
+                        <div class="tour-card-tec-row">
+                            <span class="tour-card-tec-label">{{ $tec['label'] }}</span>
+                            <div class="tour-card-tec-dots">
+                                @for($d = 1; $d <= 5; $d++)
+                                    <span class="tour-card-tec-dot {{ $d <= $tec['rate'] ? '' : 'empty' }}"></span>
+                                @endfor
+                            </div>
+                        </div>
+                        @endforeach
+                    </div>
+                    @endif
+
+                    @php
+                        $priceMin = floatval($tour->min_price ?? 0);
+                        $priceMax = floatval($tour->max_price ?? 0);
+
+                        // Fallback: parse pricing_bases when min_price is 0
+                        if ($priceMin <= 0 && !empty($tour->pricing_bases)) {
+                            $pBasesParsed = @unserialize($tour->pricing_bases);
+                            if (is_array($pBasesParsed)) {
+                                foreach ($pBasesParsed as $grp) {
+                                    if (isset($grp['price']) && floatval($grp['price']) > 0) {
+                                        $priceMin = floatval($grp['price']);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        // Fallback max: parse pricing_bases_high
+                        if ($priceMax <= 0 && !empty($tour->pricing_bases_high)) {
+                            $pBasesHigh = @unserialize($tour->pricing_bases_high);
+                            if (is_array($pBasesHigh)) {
+                                foreach ($pBasesHigh as $grp) {
+                                    if (isset($grp['price']) && floatval($grp['price']) > 0) {
+                                        $priceMax = floatval($grp['price']);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        $pCurr  = $activeCurrency ?? 'USD';
+                        $pSym   = ['USD'=>'$','JOD'=>'JD','EUR'=>'€'][$pCurr] ?? '$';
+                        $pRate  = ['USD'=>1,'JOD'=>0.709,'EUR'=>0.92][$pCurr] ?? 1;
+                    @endphp
+
+                    @if($priceMin > 0)
+                    <div class="tour-card-price-range">
+                        @if($priceMax > 0 && $priceMax > $priceMin)
+                            {{ number_format($priceMin * $pRate, 2) }} - {{ number_format($priceMax * $pRate, 2) }} {{ $pCurr }}
+                        @else
+                            From {{ $pSym }}{{ number_format($priceMin * $pRate, 2) }}
+                        @endif
+                    </div>
+                    @endif
+
+
                     <a class="btn-details" href="{{ url($lang . '/tours/' . strtolower($countries[$tour->start_country] ?? 'jordan') . '/' . $tour->url) }}/">
                         View Details
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
@@ -178,3 +301,4 @@
     </div>
     @endforeach
 </div>
+

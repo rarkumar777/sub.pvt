@@ -314,7 +314,8 @@ class FrontendAuthController extends Controller
             'fax'             => 'nullable|string|max:50',
             'address'         => 'nullable|string|max:500',
             'birth_day'       => 'nullable|date',
-            'gender'          => 'nullable|string|in:male,female',
+            'country'         => 'nullable|integer',
+            'gender'          => 'nullable|integer|in:0,1',
             'password'        => 'nullable|min:4',
             'retype_password' => 'nullable|same:password',
             'avatar'          => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -346,7 +347,7 @@ class FrontendAuthController extends Controller
         $user->last_name  = $request->input('last_name');
         $user->email      = $request->input('email');
         $user->url        = $request->input('url') ?? '';
-        $user->country    = $request->input('country') ?? '';
+        $user->country    = (int)($request->input('country') ?? 0);
         $user->city       = $request->input('city') ?? '';
         $user->company    = $request->input('company') ?? '';
         $user->mobile     = $request->input('mobile') ?? '';
@@ -354,7 +355,7 @@ class FrontendAuthController extends Controller
         $user->fax        = $request->input('fax') ?? '';
         $user->address    = $request->input('address') ?? '';
         $user->birth_day  = $request->input('birth_day') ?: null;
-        $user->gender     = $request->input('gender') ?? 'male';
+        $user->gender     = (int)($request->input('gender') ?? 1);
 
         // Password update - sirf tab jab dono fields bhari hoon
         if ($request->filled('password')) {

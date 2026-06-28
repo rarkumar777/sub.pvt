@@ -96,7 +96,7 @@
                                 <div class="md-4">
                                     <select name="country" class="full-width">
                                         @foreach($countries as $c)
-                                            <option value="{{ $c->name }}" {{ (old('country', $user->country) == $c->name) ? 'selected' : '' }}>{{ $c->name }}</option>
+                                            <option value="{{ $c->id }}" {{ (old('country', $user->country) == $c->id) ? 'selected' : '' }}>{{ $c->name }}</option>
                                         @endforeach
                                     </select>
                                 </div>
@@ -154,8 +154,8 @@
                                 <div class="md-2"><label>Gender</label></div>
                                 <div class="md-4">
                                     <select name="gender" class="full-width">
-                                        <option value="male" {{ (old('gender', $user->gender) == 'male') ? 'selected' : '' }}>Male</option>
-                                        <option value="female" {{ (old('gender', $user->gender) == 'female') ? 'selected' : '' }}>Female</option>
+                                        <option value="1" {{ (old('gender', $user->gender) == 1) ? 'selected' : '' }}>Male</option>
+                                        <option value="0" {{ (old('gender', $user->gender) == 0) ? 'selected' : '' }}>Female</option>
                                     </select>
                                 </div>
                                 <div class="md-2"><label>Avatar</label></div>

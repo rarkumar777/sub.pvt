@@ -463,14 +463,6 @@ class PaymentController extends Controller
 
                 $respStatus = $verifyResult['payment_result']['response_status'] ?? '';
 
-                // FORCE SUCCESS in Sandbox Test Mode (for 3D Secure failures or callback issues)
-                // Works on BOTH local and live server when PAYTABS_TEST_MODE=true
-                if (empty($respStatus) || $respStatus !== 'A') {
-                    if (env('PAYTABS_TEST_MODE')) {
-                        \Log::info('PayTabs: Forcing SUCCESS in sandbox test mode despite status: ' . ($respStatus ?: 'None'));
-                        $respStatus = 'A';
-                    }
-                }
 
                 if ($respStatus === 'A') {
                     // Payment verified as successful
@@ -497,17 +489,6 @@ class PaymentController extends Controller
                 ->with('payment_success', 'Your Invoice Has Been Successfully Paid');
         }
 
-        // Final FALLBACK: FORCE SUCCESS in Sandbox Test Mode (works on BOTH local & live)
-        if (env('PAYTABS_TEST_MODE')) {
-             \Log::info('PayTabs: Final Fallback Force SUCCESS in sandbox test mode');
-             $invoice->status = 'p';
-             $invoice->total_paid = $invoice->total;
-             $invoice->paid_by = 'paytabs_sandbox';
-             $invoice->save();
-             $this->updateBookingStatus($invoice);
-             return redirect('/' . $lang . '/invoice/' . $invoice->id . '/')
-                ->with('payment_success', 'SANDBOX: Payment accepted for testing purposes.');
-        }
 
         $errorMsg = 'We Are Sorry Your Payment Failed';
         $respMessage = $request->input('payment_result.response_message', '');
@@ -634,8 +615,34 @@ class PaymentController extends Controller
             $tranRef = $tranRef ?? ($pr['tran_ref']          ?? null);
         }
 
-        // Double check with PayTabs API if status not confirmed
-        if (($status !== 'A') && $tranRef) {
+        // --- CANCEL / FAILURE CHECK ---
+        // Agar status 'C' (Cancelled) ya 'D' (Declined) ya 'E' (Error) hai
+        // toh IMMEDIATELY fail karo — koi API verify call nahi karni
+        $failedStatuses = ['C', 'D', 'E', 'F', 'H', 'V'];
+        if (in_array($status, $failedStatuses, true)) {
+            \Log::info('PayTabs payment cancelled/failed by user', [
+                'booking_id' => $bookingId,
+                'status'     => $status,
+                'message'    => $message,
+            ]);
+            session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
+
+            $friendlyMsg = match(true) {
+                $status === 'C'                                                => 'Payment was cancelled. Please try again if you wish to complete your booking.',
+                str_contains(strtolower($message ?? ''), 'cancelled')         => 'Payment was cancelled.',
+                str_contains(strtolower($message ?? ''), 'declined')          => 'Your card was declined. Please try a different card.',
+                str_contains(strtolower($message ?? ''), '3dsecure')          => 'Payment declined: 3D Secure authentication failed.',
+                str_contains(strtolower($message ?? ''), 'expired')           => 'Your card has expired. Please use a different card.',
+                default                                                        => 'Payment could not be completed: ' . ($message ?? 'Please try again.'),
+            };
+
+            return redirect('/' . $lang . '/tours/book_tour/' . $booking->tour_id)
+                ->with('error', $friendlyMsg);
+        }
+
+        // Double check with PayTabs API ONLY if status is not a known failure
+        // aur sirf tab jab status 'A' nahi hai
+        if ($status !== 'A' && !empty($tranRef)) {
             try {
                 $paytabsConfig = config('services.paytabs');
                 $queryResponse = \Illuminate\Support\Facades\Http::withHeaders([
@@ -647,22 +654,32 @@ class PaymentController extends Controller
                 ]);
 
                 if ($queryResponse->successful()) {
-                    $queryData = $queryResponse->json();
-                    $status    = $queryData['payment_result']['response_status']  ?? $status;
-                    $message   = $queryData['payment_result']['response_message'] ?? $message;
-                    $bookingId = $queryData['cart_id'] ?? $bookingId;
+                    $queryData   = $queryResponse->json();
+                    $apiStatus   = $queryData['payment_result']['response_status']  ?? null;
+                    $apiMessage  = $queryData['payment_result']['response_message'] ?? null;
+                    $bookingId   = $queryData['cart_id'] ?? $bookingId;
+
+                    // API ne bhi cancel/fail bataya toh immediately redirect karo
+                    if (in_array($apiStatus, $failedStatuses, true) || ($apiStatus !== 'A')) {
+                        \Log::info('PayTabs API confirmed non-successful payment', [
+                            'booking_id' => $bookingId,
+                            'api_status' => $apiStatus,
+                        ]);
+                        session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
+                        return redirect('/' . $lang . '/tours/book_tour/' . $booking->tour_id)
+                            ->with('error', $apiMessage ?? 'Payment was not completed. Please try again.');
+                    }
+
+                    // Only update if API confirms 'A'
+                    $status  = $apiStatus;
+                    $message = $apiMessage;
                 }
             } catch (\Exception $e) {
                 \Log::error('PayTabs Query Failed', ['error' => $e->getMessage()]);
             }
         }
 
-        // FORCE SUCCESS in Sandbox Test Mode (works on BOTH local & live)
-        if ($status !== 'A' && env('PAYTABS_TEST_MODE')) {
-            \Log::info('PayTabs: Forcing SUCCESS in sandbox test mode');
-            $status = 'A';
-        }
-
+        // Sirf 'A' (Authorized/Approved) status par hi booking confirm karo
         if ($status === 'A') {
             // Update invoice + booking
             $invoice = Invoice::find($booking->invoice_id);
@@ -742,15 +759,15 @@ class PaymentController extends Controller
                 ->with('success', 'Payment successful! Your booking is confirmed.');
         }
 
+        // Koi bhi aur case = failure
         session()->forget(['paytabs_tran_ref', 'paytabs_booking_id']);
 
-        // Friendly error messages
         $friendlyMsg = match(true) {
             str_contains(strtolower($message ?? ''), '3dsecure')  => 'Payment declined: 3D Secure authentication failed. Please use a different card or contact your bank.',
             str_contains(strtolower($message ?? ''), 'declined')  => 'Your card was declined. Please try a different card.',
             str_contains(strtolower($message ?? ''), 'cancelled') => 'Payment was cancelled.',
             str_contains(strtolower($message ?? ''), 'expired')   => 'Your card has expired. Please use a different card.',
-            default => 'Payment could not be completed: ' . ($message ?? 'Please try again.'),
+            default                                                => 'Payment could not be completed: ' . ($message ?? 'Please try again.'),
         };
 
         return redirect('/' . $lang . '/tours/book_tour/' . $booking->tour_id)

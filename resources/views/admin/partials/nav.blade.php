@@ -105,10 +105,16 @@
 
         <!-- REQUEST MANAGER -->
         <ul class="nav-list">
-            <li class="nav-item {{ request()->is('admin/request-manager*') ? 'active' : '' }}">
-                <a href="{{ route('admin.request-manager') }}">
+            <li class="nav-item has-dropdown {{ (request()->is('admin/request-manager*') || request()->is('admin/canned*') || request()->is('admin/library*')) ? 'open active' : '' }}">
+                <a href="javascript:void(0)" class="dropdown-toggle">
                     <i class="fa fa-inbox"></i> Request Manager
+                    <i class="fa fa-chevron-right arrow"></i>
                 </a>
+                <ul class="sub-nav">
+                    <li><a href="{{ route('admin.request-manager') }}">Requests</a></li>
+                    <li><a href="{{ route('admin.canned-days.index') }}">Canned Days</a></li>
+                    <li><a href="{{ route('admin.library') }}">Library</a></li>
+                </ul>
             </li>
         </ul>
 
@@ -160,7 +166,7 @@
 
             {{-- Quotation --}}
             @if(auth()->user()->hasPermission('tours_quotations') || auth()->user()->hasPermission('services_'))
-            <li class="nav-item has-dropdown {{ (request()->is('admin/quotations*') || request()->is('admin/quotation-*') || request()->is('admin/canned*') || request()->is('admin/library*') || (request()->is('admin/services*') && !request()->is('admin/services-venders*'))) ? 'open active' : '' }}">
+            <li class="nav-item has-dropdown {{ (request()->is('admin/quotations*') || request()->is('admin/quotation-*') || (request()->is('admin/services*') && !request()->is('admin/services-venders*'))) ? 'open active' : '' }}">
                 <a href="javascript:void(0)" class="dropdown-toggle">
                     <i class="fa fa-pie-chart"></i> Quotations
                     <i class="fa fa-chevron-right arrow"></i>
@@ -169,13 +175,11 @@
                     @if(auth()->user()->hasPermission('tours_quotations'))
                     <li><a href="{{ route('admin.quotations.index') }}">Manage Quotations</a></li>
                     <li><a href="{{ route('admin.quotation-pricing.index') }}">Pricing</a></li>
-                    <li><a href="{{ route('admin.canned-days.index') }}">Canned Days</a></li>
                     <li><a href="{{ route('admin.quotation-fast-access') }}">Expenses Fast Access</a></li>
                     <li><a href="{{ route('admin.quotation-email-templates') }}">E-mail Templates</a></li>
                     @endif
                     @if(auth()->user()->hasPermission('services_'))
                     <li><a href="{{ route('admin.services.index') }}">Manage Services</a></li>
-                    <li><a href="{{ route('admin.library') }}">Library</a></li>
                     @endif
                 </ul>
             </li>

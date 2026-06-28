@@ -301,10 +301,34 @@ class FrontendAuthController extends Controller
             return redirect('/' . $lang . '/users/login/');
         }
 
+        // Proper validation - har field ke liye
         $request->validate([
-            'first_name' => 'required|string|max:150',
-            'last_name' => 'required|string|max:150',
-            'email' => 'required|email|max:150',
+            'first_name'      => 'required|string|max:150',
+            'last_name'       => 'required|string|max:150',
+            'email'           => 'required|email|max:150',
+            'url'             => 'nullable|string|max:250',
+            'city'            => 'nullable|string|max:150',
+            'company'         => 'nullable|string|max:150',
+            'mobile'          => 'nullable|string|max:50',
+            'telephone'       => 'nullable|string|max:50',
+            'fax'             => 'nullable|string|max:50',
+            'address'         => 'nullable|string|max:500',
+            'birth_day'       => 'nullable|date',
+            'gender'          => 'nullable|string|in:male,female',
+            'password'        => 'nullable|min:4',
+            'retype_password' => 'nullable|same:password',
+            'avatar'          => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ], [
+            'first_name.required'      => 'First Name is required.',
+            'last_name.required'       => 'Last Name is required.',
+            'email.required'           => 'Email is required.',
+            'email.email'              => 'Please enter a valid email address.',
+            'url.max'                  => 'URL cannot be more than 250 characters.',
+            'password.min'             => 'Password must be at least 4 characters.',
+            'retype_password.same'     => 'Password and Retype Password do not match.',
+            'avatar.image'             => 'Avatar must be an image file.',
+            'avatar.max'               => 'Avatar size cannot exceed 2MB.',
+            'birth_day.date'           => 'Please enter a valid birth date.',
         ]);
 
         $user = auth()->user();
@@ -317,32 +341,30 @@ class FrontendAuthController extends Controller
             }
         }
 
+        // Empty string default - DB null error avoid karne ke liye
         $user->first_name = $request->input('first_name');
-        $user->last_name = $request->input('last_name');
-        $user->email = $request->input('email');
-        $user->url = $request->input('url', '');
-        $user->country = $request->input('country', '');
-        $user->city = $request->input('city', '');
-        $user->company = $request->input('company', '');
-        $user->mobile = $request->input('mobile', '');
-        $user->phone = $request->input('telephone', '');
-        $user->fax = $request->input('fax', '');
-        $user->address = $request->input('address', '');
-        $user->birth_day = $request->input('birth_day', '');
-        $user->gender = $request->input('gender', 'male');
+        $user->last_name  = $request->input('last_name');
+        $user->email      = $request->input('email');
+        $user->url        = $request->input('url') ?? '';
+        $user->country    = $request->input('country') ?? '';
+        $user->city       = $request->input('city') ?? '';
+        $user->company    = $request->input('company') ?? '';
+        $user->mobile     = $request->input('mobile') ?? '';
+        $user->phone      = $request->input('telephone') ?? '';
+        $user->fax        = $request->input('fax') ?? '';
+        $user->address    = $request->input('address') ?? '';
+        $user->birth_day  = $request->input('birth_day') ?: null;
+        $user->gender     = $request->input('gender') ?? 'male';
 
-        // Update password if provided
-        if ($request->filled('password') && $request->filled('retype_password')) {
-            if ($request->password !== $request->retype_password) {
-                return back()->withErrors(['password' => 'Password and Retype Password do not match.'])->withInput();
-            }
+        // Password update - sirf tab jab dono fields bhari hoon
+        if ($request->filled('password')) {
             $salt = 'asdajs';
             $user->pass = sha1($salt . sha1($request->password));
         }
 
-        // Handle avatar
+        // Avatar upload
         if ($request->hasFile('avatar')) {
-            $file = $request->file('avatar');
+            $file     = $request->file('avatar');
             $filename = 'avatar_' . time() . '.' . $file->getClientOriginalExtension();
             $file->move(public_path('uploads/avatars'), $filename);
             $user->avatar = 'uploads/avatars/' . $filename;

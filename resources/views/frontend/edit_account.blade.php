@@ -49,44 +49,44 @@
                         </div>
 
                     @if(session('success'))
-                        <div class="sd-12 pad" style="background:#dff0d8; color:#3c763d; border:1px solid #d6e9c6; margin-bottom:8px; border-radius:3px;">
+                        <div class="sd-12 pad" style="background:#dff0d8; color:#3c763d; border:1px solid #d6e9c6; margin:10px 15px 5px; border-radius:4px; padding:10px 15px;">
                             <i class="fa-check"></i> {{ session('success') }}
                         </div>
                     @endif
 
-                    @if($errors->any())
-                        @foreach($errors->all() as $error)
-                            <div class="sd-12 pad" style="background:#f2dede; color:#a94442; border:1px solid #ebccd1; margin-bottom:8px; border-radius:3px;">
-                                <i class="fa-close"></i> {{ $error }}
-                            </div>
-                        @endforeach
-                    @endif
-
                     <div class="sd-12 pad">
+                        <style>
+                            .field-error { color: #a94442; font-size: 12px; margin-top: 3px; display: block; }
+                            .input-error { border: 1px solid #a94442 !important; background: #fff8f8 !important; }
+                        </style>
                         <form method="POST" action="{{ route('frontend.account.update', ['lang' => $lang]) }}" enctype="multipart/form-data">
                             @csrf
 
                             {{-- First Name / Last Name --}}
                             <div class="row cell">
-                                <div class="md-2"><label>First Name</label></div>
+                                <div class="md-2"><label>First Name <span style="color:red;">*</span></label></div>
                                 <div class="md-4">
-                                    <input type="text" name="first_name" value="{{ old('first_name', $user->first_name) }}" class="full-width" required>
+                                    <input type="text" name="first_name" value="{{ old('first_name', $user->first_name) }}" class="full-width @error('first_name') input-error @enderror">
+                                    @error('first_name')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
-                                <div class="md-2"><label>Last Name</label></div>
+                                <div class="md-2"><label>Last Name <span style="color:red;">*</span></label></div>
                                 <div class="md-4">
-                                    <input type="text" name="last_name" value="{{ old('last_name', $user->last_name) }}" class="full-width" required>
+                                    <input type="text" name="last_name" value="{{ old('last_name', $user->last_name) }}" class="full-width @error('last_name') input-error @enderror">
+                                    @error('last_name')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
                             {{-- Email / URL --}}
                             <div class="row cell">
-                                <div class="md-2"><label>E-mail</label></div>
+                                <div class="md-2"><label>E-mail <span style="color:red;">*</span></label></div>
                                 <div class="md-4">
-                                    <input type="email" name="email" value="{{ old('email', $user->email) }}" class="full-width" required>
+                                    <input type="email" name="email" value="{{ old('email', $user->email) }}" class="full-width @error('email') input-error @enderror">
+                                    @error('email')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                                 <div class="md-2"><label>URL</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="url" value="{{ old('url', $user->url) }}" class="full-width">
+                                    <input type="text" name="url" value="{{ old('url', $user->url) }}" class="full-width @error('url') input-error @enderror" placeholder="https://...">
+                                    @error('url')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -102,7 +102,8 @@
                                 </div>
                                 <div class="md-2"><label>City</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="city" value="{{ old('city', $user->city) }}" class="full-width">
+                                    <input type="text" name="city" value="{{ old('city', $user->city) }}" class="full-width @error('city') input-error @enderror">
+                                    @error('city')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -110,11 +111,13 @@
                             <div class="row cell">
                                 <div class="md-2"><label>Company Name</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="company" value="{{ old('company', $user->company) }}" class="full-width">
+                                    <input type="text" name="company" value="{{ old('company', $user->company) }}" class="full-width @error('company') input-error @enderror">
+                                    @error('company')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                                 <div class="md-2"><label>Mobile</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="mobile" value="{{ old('mobile', $user->mobile) }}" class="full-width">
+                                    <input type="text" name="mobile" value="{{ old('mobile', $user->mobile) }}" class="full-width @error('mobile') input-error @enderror">
+                                    @error('mobile')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -122,11 +125,13 @@
                             <div class="row cell">
                                 <div class="md-2"><label>Telephone</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="telephone" value="{{ old('telephone', $user->phone) }}" class="full-width">
+                                    <input type="text" name="telephone" value="{{ old('telephone', $user->phone) }}" class="full-width @error('telephone') input-error @enderror">
+                                    @error('telephone')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                                 <div class="md-2"><label>Fax</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="fax" value="{{ old('fax', $user->fax) }}" class="full-width">
+                                    <input type="text" name="fax" value="{{ old('fax', $user->fax) }}" class="full-width @error('fax') input-error @enderror">
+                                    @error('fax')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -134,11 +139,13 @@
                             <div class="row cell">
                                 <div class="md-2"><label>Address</label></div>
                                 <div class="md-4">
-                                    <input type="text" name="address" value="{{ old('address', $user->address) }}" class="full-width">
+                                    <input type="text" name="address" value="{{ old('address', $user->address) }}" class="full-width @error('address') input-error @enderror">
+                                    @error('address')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                                 <div class="md-2"><label>Birth Date</label></div>
                                 <div class="md-4">
-                                    <input type="date" name="birth_day" value="{{ old('birth_day', $user->birth_day) }}" class="full-width">
+                                    <input type="date" name="birth_day" value="{{ old('birth_day', $user->birth_day) }}" class="full-width @error('birth_day') input-error @enderror">
+                                    @error('birth_day')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -156,7 +163,8 @@
                                     @if(!empty($user->avatar))
                                         <img src="/{{ $user->avatar }}" style="height:40px; margin-bottom:5px; border-radius:3px;"><br>
                                     @endif
-                                    <input type="file" name="avatar" accept="image/*">
+                                    <input type="file" name="avatar" accept="image/*" class="@error('avatar') input-error @enderror">
+                                    @error('avatar')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 
@@ -166,11 +174,13 @@
                             <div class="row cell">
                                 <div class="md-2"><label>Password</label></div>
                                 <div class="md-4">
-                                    <input type="password" name="password" class="full-width" placeholder="Unchanged">
+                                    <input type="password" name="password" class="full-width @error('password') input-error @enderror" placeholder="Unchanged">
+                                    @error('password')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                                 <div class="md-2"><label>Retype Password</label></div>
                                 <div class="md-4">
-                                    <input type="password" name="retype_password" class="full-width" placeholder="Unchanged">
+                                    <input type="password" name="retype_password" class="full-width @error('retype_password') input-error @enderror" placeholder="Unchanged">
+                                    @error('retype_password')<span class="field-error"><i class="fa-exclamation-circle"></i> {{ $message }}</span>@enderror
                                 </div>
                             </div>
 

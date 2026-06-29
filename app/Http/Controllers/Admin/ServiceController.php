@@ -335,39 +335,59 @@ class ServiceController extends Controller
         if ($request->has('website')) { $data['website'] = $request->input('website'); }
         if ($request->has('arrival')) { $data['arrival'] = $request->input('arrival'); }
 
-        // Handle multi-image upload (hotel/activity from library)
+        $serviceType = $request->input('service_type', '');
+
+        // Ensure upload directory exists
+        if (!is_dir(public_path('uploads/services'))) {
+            mkdir(public_path('uploads/services'), 0755, true);
+        }
+
+        // Handle multi-image upload
         $allImages = [];
         if ($request->hasFile('new_images')) {
             foreach ($request->file('new_images') as $file) {
-                $filename = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
+                $filename = time() . '_' . uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
                 $file->move(public_path('uploads/services'), $filename);
                 $allImages[] = 'uploads/services/' . $filename;
             }
         } elseif ($request->hasFile('image')) {
             $file = $request->file('image');
-            $filename = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
+            $filename = time() . '_' . uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
             $file->move(public_path('uploads/services'), $filename);
             $allImages[] = 'uploads/services/' . $filename;
         }
-        if (!empty($allImages)) {
-            $data['image'] = count($allImages) === 1 ? $allImages[0] : json_encode($allImages);
-        }
 
-        if ($request->input('service_type') === 'transport') {
-            if ($request->has('method')) { $data['transport_method'] = $request->input('method'); }
-            if ($request->has('departure')) { $data['departure_location'] = $request->input('departure'); }
-            if ($request->has('arrival')) { $data['arrival_destination'] = $request->input('arrival'); }
-            if ($request->has('distance')) { $data['distance_km'] = $request->input('distance'); }
-            // Extract length which was not named in the form
-            if ($request->has('length_time')) { $data['length_time'] = $request->input('length_time'); }
+        if ($serviceType === 'transport') {
+            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
+            if ($request->has('method'))      { $data['transport_method']    = $request->input('method'); }
+            if ($request->has('departure'))   { $data['departure_location']  = $request->input('departure'); }
+            if ($request->has('arrival'))     { $data['arrival_destination'] = $request->input('arrival'); }
+            if ($request->has('length_time')) { $data['length_time']         = $request->input('length_time'); }
             \App\Models\Transport::create($data);
-        } elseif ($request->input('service_type') === 'restaurant') {
+
+        } elseif ($serviceType === 'accommodation') {
+            // Accommodation uses 'descriptionL' column instead of 'description'
+            if (!empty($allImages)) { $data['image'] = serialize($allImages); }
+            $accomData = $data;
+            $accomData['descriptionL'] = $accomData['description'] ?? '';
+            unset($accomData['description']);
+            \App\Models\Accommodation::create($accomData);
+
+        } elseif ($serviceType === 'restaurant') {
+            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
             \App\Models\Restaurant::create($data);
+
+        } elseif ($serviceType === 'activity') {
+            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
+            \App\Models\Activity::create($data);
+
         } else {
+            // guide or generic
+            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : json_encode($allImages); }
             Service::create($data);
         }
 
-        if ($request->ajax()) {
+        if ($request->ajax() || $request->wantsJson()) {
             return response()->json(['success' => true]);
         }
         return redirect()->route('admin.services.index', ['country' => $request->input('country'), 'category' => $data['category']])->with('success', 'Service created');
@@ -3440,6 +3460,101 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         return view('admin.services.library', compact(
             'countries', 'countryId', 'groupedServices', 'rootCategories', 'cannedDays', 'totalDays', 'hotelsByStar'
+        ));
+    }
+
+    /**
+     * Dedicated page for each library category (Activity, Transport, Accommodation, Restaurant, Guide)
+     */
+    public function libraryCategory(Request $request)
+    {
+        // Detect which category from URL segment
+        $segment = $request->segment(3); // 'activity', 'transport', 'accommodation', 'restaurant', 'guide'
+
+        $categoryMap = [
+            'activity'      => ['id' => 93,  'name' => 'Activity',      'icon' => 'fa-binoculars'],
+            'transport'     => ['id' => 715, 'name' => 'Transport',     'icon' => 'fa-car'],
+            'accommodation' => ['id' => 403, 'name' => 'Accommodation', 'icon' => 'fa-bed'],
+            'restaurant'    => ['id' => 456, 'name' => 'Restaurant',    'icon' => 'fa-cutlery'],
+            'guide'         => ['id' => 527, 'name' => 'Guide',         'icon' => 'fa-user'],
+        ];
+
+        if (!isset($categoryMap[$segment])) {
+            abort(404);
+        }
+
+        $catInfo   = $categoryMap[$segment];
+        $catId     = $catInfo['id'];
+        $catName   = $catInfo['name'];
+        $catIcon   = $catInfo['icon'];
+
+        // Country
+        $targetCountryNames = ['Egypt', 'Jordan', 'Lebanon', 'Libya', 'Morocco', 'Oman', 'Palestine', 'Qatar', 'Saudi Arabia'];
+        $countries = \App\Models\Country::where('lang', 'en')
+            ->whereIn('name', $targetCountryNames)
+            ->orderBy('name')
+            ->get()
+            ->unique('name')
+            ->pluck('name', 'id')
+            ->toArray();
+
+        $countryId = $request->input('country');
+        if (!$countryId) {
+            $jordanId  = array_search('Jordan', $countries);
+            $countryId = $jordanId !== false ? $jordanId : array_key_first($countries);
+        }
+
+        $search   = trim($request->input('search', ''));
+        $services = collect();
+
+        if ($countryId) {
+            if ($catId == 403) {
+                // Accommodation — en33_accommodations
+                $catIds = $this->getAllDescendantIds(403, $countryId);
+                $catIds[] = 403;
+                $query = \App\Models\Accommodation::whereIn('category', $catIds)
+                    ->with('venderUser', 'serviceCategory.parent');
+                if ($search) $query->where('descriptionL', 'like', '%' . $search . '%');
+                $services = $query->orderByDesc('id')->get();
+
+            } elseif ($catId == 715) {
+                // Transport — en33_transports
+                $query = \App\Models\Transport::where('country', $countryId)
+                    ->with('venderUser', 'serviceCategory');
+                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                $services = $query->orderByDesc('id')->get();
+
+            } elseif ($catId == 93) {
+                // Activity — en33_activities
+                $catIds = $this->getAllDescendantIds(93, $countryId);
+                $catIds[] = 93;
+                $query = \App\Models\Activity::where('country', $countryId)
+                    ->with('venderUser', 'serviceCategory');
+                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                $services = $query->orderByDesc('id')->get();
+
+            } elseif ($catId == 456) {
+                // Restaurant — en33_restaurants
+                $catIds = $this->getAllDescendantIds(456, $countryId);
+                $catIds[] = 456;
+                $query = \App\Models\Restaurant::whereIn('category', $catIds)
+                    ->with('venderUser', 'serviceCategory.parent');
+                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                $services = $query->orderByDesc('id')->get();
+
+            } elseif ($catId == 527) {
+                // Guide — en33_services
+                $catIds = $this->getAllDescendantIds(527, $countryId);
+                $catIds[] = 527;
+                $query = \App\Models\Service::whereIn('category', $catIds)
+                    ->with('venderUser', 'serviceCategory');
+                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                $services = $query->orderByDesc('id')->get();
+            }
+        }
+
+        return view('admin.services.library_category', compact(
+            'catName', 'catIcon', 'catId', 'segment', 'services', 'countryId', 'countries', 'search'
         ));
     }
 

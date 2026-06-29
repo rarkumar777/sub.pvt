@@ -211,6 +211,11 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
     Route::get('library/services-by-category', [ServiceController::class, 'getServicesByCategory'])->name('admin.library.services-by-category');
     Route::get('library/vendor-services-table/{id}', [ServiceController::class, 'getVendorServicesTable'])->name('admin.library.vendor-services-table');
     Route::get('library/days', [ServiceController::class, 'libraryDays'])->name('admin.library.days');
+    Route::get('library/activity', [ServiceController::class, 'libraryCategory'])->name('admin.library.activity');
+    Route::get('library/transport', [ServiceController::class, 'libraryCategory'])->name('admin.library.transport');
+    Route::get('library/accommodation', [ServiceController::class, 'libraryCategory'])->name('admin.library.accommodation');
+    Route::get('library/restaurant', [ServiceController::class, 'libraryCategory'])->name('admin.library.restaurant');
+    Route::get('library/guide', [ServiceController::class, 'libraryCategory'])->name('admin.library.guide');
     Route::post('services/quick-add', [ServiceController::class, 'quickAdd'])->name('admin.services.quick-add');
     Route::post('transports/quick-add', [ServiceController::class, 'quickAddTransport'])->name('admin.transports.quick-add');
     Route::post('guides/quick-add', [ServiceController::class, 'quickAddGuide'])->name('admin.guides.quick-add');

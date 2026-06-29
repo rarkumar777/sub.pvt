@@ -1070,5 +1070,30 @@ function toggleFab(){
 document.getElementById('libModal').addEventListener('click', function(e){if(e.target===this)closeModal()});
 document.getElementById('delModal').addEventListener('click', function(e){if(e.target===this)closeDelModal()});
 document.addEventListener('keydown', function(e){if(e.key==='Escape'){closeModal(); closeDelModal(); if(fabOpen)toggleFab();}});
+
+// Auto-select tab from URL ?tab= parameter (e.g. from sidebar menu)
+(function(){
+    var tabMap = {
+        'Activity':       { id: 93,  type: 'cat' },
+        'Transport':      { id: 715, type: 'cat' },
+        'Accommodation':  { id: 403, type: 'cat' },
+        'Restaurant':     { id: 456, type: 'cat' },
+        'Guide':          { id: 527, type: 'cat' },
+        'Days':           { id: null, type: 'days' }
+    };
+    var params = new URLSearchParams(window.location.search);
+    var tab = params.get('tab');
+    if(tab && tabMap[tab]) {
+        var t = tabMap[tab];
+        if(t.type === 'days') {
+            var btn = document.getElementById('catBtn_days');
+            if(btn) loadDaysTab(btn);
+        } else {
+            var btn = document.getElementById('catBtn_' + t.id);
+            if(btn) toggleCatBtn(t.id, btn);
+        }
+    }
+})();
+
 </script>
 @endpush

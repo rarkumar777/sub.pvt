@@ -112,8 +112,13 @@
                 </a>
                 <ul class="sub-nav">
                     <li><a href="{{ route('admin.request-manager') }}">Requests</a></li>
-                    <li><a href="{{ route('admin.canned-days.index') }}">Canned Days</a></li>
-                    <li><a href="{{ route('admin.library') }}">Library</a></li>
+                    <li><a href="{{ route('admin.canned-days.index') }}">Days</a></li>
+                    <li><a href="{{ route('admin.library') }}">Services</a></li>
+                    <li><a href="{{ route('admin.library') }}?tab=Accommodation">Accommodations</a></li>
+                    <li><a href="{{ route('admin.library') }}?tab=Transport">Transportations</a></li>
+                    <li><a href="{{ route('admin.library') }}?tab=Restaurant">Restaurants</a></li>
+                    <li><a href="{{ route('admin.library') }}?tab=Activity">Activity</a></li>
+                    <li><a href="{{ route('admin.library') }}?tab=Guide">Guides</a></li>
                 </ul>
             </li>
         </ul>

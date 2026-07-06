@@ -221,6 +221,8 @@ Route::prefix('admin')->middleware(['admin'])->group(function () {
     Route::post('guides/quick-add', [ServiceController::class, 'quickAddGuide'])->name('admin.guides.quick-add');
     Route::post('activities/quick-add', [ServiceController::class, 'quickAddActivity'])->name('admin.activities.quick-add');
     Route::post('restaurants/quick-add', [ServiceController::class, 'quickAddRestaurant'])->name('admin.restaurants.quick-add');
+    Route::get('vendor/{id}/activities', [ServiceController::class, 'getVendorActivities'])->name('admin.vendor.activities');
+    Route::get('vendor/{id}/services', [ServiceController::class, 'getVendorServices'])->name('admin.vendor.services');
 
     // Expenses
     Route::get('expenses', [ExpenseController::class, 'index'])->name('admin.expenses.index');

@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jul 02, 2026 at 11:14 AM
+-- Generation Time: Jul 06, 2026 at 09:36 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.5.1
 
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `petrpkng_pvtjo`
+-- Database: `zed_petrpkng_pvtjo`
 --
 
 -- --------------------------------------------------------
@@ -79,7 +79,7 @@ CREATE TABLE `en33_accommodations` (
 --
 
 INSERT INTO `en33_accommodations` (`id`, `descriptionL`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
-(1, 'THE RN HOTEL', 0, 692, 403, 123, 0, '[\"uploads\\/services\\/1782749390_6a4298ce61401_download1.jpg\",\"uploads\\/services\\/1782749390_6a4298ce61704_download2.jpg\",\"uploads\\/services\\/1782749390_6a4298ce619ec_download3.jpg\"]', '<p>What is Lorem Ipsum?\r\nLorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry\'s standard dummy text ever since 1966, when designers at Letraset and James Mosley, the librarian at St Bride Printing Library in London, took a 1914 Cicero translation and scrambled it to make dummy text for Letraset\'s Body Type sheets. It has survived not only many decades, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised thanks to these sheets and more recently with desktop publishing software like Aldus PageMaker and Microsoft Word including versions of Lorem Ipsum.</p>', 'Hotel', '5 ★★★★★', 'www.google.com', 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-06-29 10:39:50', '2026-06-30 12:32:12');
+(1, 'Marina Plaza Hotel', 0, 275, 403, 123, 0, '[\"uploads\\/services\\/1782749390_6a4298ce61401_download1.jpg\",\"uploads\\/services\\/1782749390_6a4298ce61704_download2.jpg\",\"uploads\\/services\\/1782749390_6a4298ce619ec_download3.jpg\",\"uploads\\/services\\/1783181177_images5.jpg\",\"uploads\\/services\\/1783181177_images.jpg\"]', '<p>What is Lorem Ipsum?\r\nLorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry\'s standard dummy text ever since 1966, when designers at Letraset and James Mosley, the librarian at St Bride Printing Library in London, took a 1914 Cicero translation and scrambled it to make dummy text for Letraset\'s Body Type sheets. It has survived not only many decades, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised thanks to these sheets and more recently with desktop publishing software like Aldus PageMaker and Microsoft Word including versions of Lorem Ipsum.</p>', 'Hotel', '5 ★★★★★', 'www.google.com', 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-06-29 10:39:50', '2026-07-04 10:39:07');
 
 -- --------------------------------------------------------
 
@@ -109,6 +109,14 @@ CREATE TABLE `en33_activities` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `en33_activities`
+--
+
+INSERT INTO `en33_activities` (`id`, `description`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
+(1, 'Lunch', 0, 0, 215, 123, 0, '[\"uploads\\/services\\/1783093841_images.jpg\",null,null,null,\"uploads\\/services\\/1783094191_images4.jpg\",\"uploads\\/services\\/1783094191_images5.jpg\",\"uploads\\/services\\/1783094191_images.jpg\",null,null,\"uploads\\/services\\/1783094308_download.jpg\",\"uploads\\/services\\/1783094308_images1.jpg\"]', NULL, NULL, NULL, NULL, 'petra', NULL, NULL, NULL, NULL, NULL, '2026-07-03 04:10:52', '2026-07-03 10:28:28'),
+(2, 'rama add activity test', 0, 469, 93, 123, 0, '[\"uploads\\/services\\/1783108873_6a4815092ef76_images5.jpg\",\"uploads\\/services\\/1783108873_6a4815092f444_images.jpg\",null,\"uploads\\/services\\/1783181410_images.jpg\"]', NULL, NULL, '5 Star', NULL, 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-07-03 14:31:13', '2026-07-04 10:40:10');
 
 -- --------------------------------------------------------
 
@@ -22725,6 +22733,16 @@ CREATE TABLE `en33_restaurants` (
   `updated_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `en33_restaurants`
+--
+
+INSERT INTO `en33_restaurants` (`id`, `description`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
+(1, 'Falcon Rock Hotel', 0, 218, 706, 123, 0, '[\"uploads\\/services\\/1783028286_download3.jpg\",\"uploads\\/services\\/1783113842_images.jpg\"]', 'jkljl,j trhfghfghfdhfdhfdghfghgfh nthtyujhtr', NULL, NULL, NULL, 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-07-02 12:28:08', '2026-07-03 16:03:05'),
+(2, 'rama resto', 0, 147, 0, 123, 0, NULL, 'dgdf', NULL, NULL, NULL, 'Amman', NULL, NULL, NULL, NULL, NULL, '2026-07-03 17:13:01', '2026-07-03 17:13:01'),
+(3, 'rama resto', 0, 218, 456, 123, 0, '[\"uploads\\/services\\/1783119148_6a483d2cc8ab4_images5.jpg\",\"uploads\\/services\\/1783119148_6a483d2cc8d6c_images.jpg\",\"uploads\\/services\\/1783181383_images4.jpg\",\"uploads\\/services\\/1783181383_images5.jpg\",\"uploads\\/services\\/1783181383_images.jpg\"]', NULL, NULL, NULL, NULL, 'Amman', NULL, NULL, NULL, NULL, NULL, '2026-07-03 17:22:28', '2026-07-04 10:39:43'),
+(4, 'test', 0, 282, 456, 123, 0, '[\"uploads\\/services\\/1783187471_images5.jpg\",\"uploads\\/services\\/1783187471_images.jpg\"]', 'jhgbj', NULL, NULL, NULL, 'Amman', NULL, NULL, NULL, NULL, NULL, '2026-07-04 12:20:48', '2026-07-04 12:21:11');
+
 -- --------------------------------------------------------
 
 --
@@ -24802,7 +24820,6 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (2233, 'Wadi rum / Aqaba / 71 km 1 h 3 min', 30.00, 226, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (2234, 'Camping on FB', 20.00, 426, NULL, NULL, NULL, NULL, NULL, 599, 123, 0),
 (2235, 'Amman / King way / Madaba / Nebo / Karak / Dana /  250 km (v.c)', 75.00, 268, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
-(2236, 'Finan / Petra / 42 km 52 min', 30.00, 213, NULL, NULL, NULL, NULL, NULL, 527, 123, 0),
 (2237, 'Finan / Petra / 42 km / 50 min', 30.00, 213, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (2238, 'Wadi Rum / Dead Sea / Amman 360 km (v.c)', 90.00, 268, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (2239, 'Amman / Ajloun / Jerash / Amman  143 km  (v.c)', 40.00, 268, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
@@ -24943,10 +24960,10 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (2376, 'Wadi rum / Dead sea / Allenby / 320 km 4h 30 min', 95.00, 188, NULL, NULL, NULL, NULL, NULL, 150, 123, 0),
 (2377, 'Single Room On BO', 10.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
 (2378, 'Single Room On BB', 15.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
-(2379, 'Single Room On FB', 19.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0);
-INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
+(2379, 'Single Room On FB', 19.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
 (2380, 'Double Room On BO', 20.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
-(2381, 'Double Room On BB', 30.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
+(2381, 'Double Room On BB', 30.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0);
+INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
 (2382, 'Double Room On FB', 35.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
 (2383, 'Triple Room On BO', 30.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
 (2384, 'Triple Room On BB', 45.00, 309, NULL, NULL, NULL, NULL, NULL, 387, 123, 0),
@@ -25456,10 +25473,10 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (2891, 'ticket', 0.00, 268, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (2892, 'guide', 0.01, 268, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (2893, 'Airport / Amman / Petra', 80.00, 268, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
-(2894, 'Tour French Guide', 70.00, 516, NULL, NULL, NULL, NULL, NULL, 472, 123, 0);
-INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
+(2894, 'Tour French Guide', 70.00, 516, NULL, NULL, NULL, NULL, NULL, 472, 123, 0),
 (2895, 'Amman city', 20.00, 505, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
-(2896, 'Wadi rum / dead sea', 100.00, 226, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
+(2896, 'Wadi rum / dead sea', 100.00, 226, NULL, NULL, NULL, NULL, NULL, 148, 123, 0);
+INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
 (2897, 'Single Tent on B.O', 7.50, 459, NULL, NULL, NULL, NULL, NULL, 596, 123, 0),
 (2898, 'Single Tent on B.B', 10.00, 459, NULL, NULL, NULL, NULL, NULL, 596, 123, 0),
 (2899, 'Single Tent on FB', 25.00, 459, NULL, NULL, NULL, NULL, NULL, 596, 123, 0),
@@ -25970,10 +25987,10 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (3432, 'Dead Sea/ Amman City Tour/ Dead Sea', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (3433, 'Dead Sea/ Desert Castle/ Dead Sea', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (3434, 'Amman/ Um Qais/ Jordan Valley/ Pella/ Amman/', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
-(3435, 'Amman/ Madaba/ Mont Nebo/ Wadi Mujib/ Dana', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0);
-INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
+(3435, 'Amman/ Madaba/ Mont Nebo/ Wadi Mujib/ Dana', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (3436, 'Aqaba/ Kerak/ Um Ar Rasas/ Dead Sea/', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
-(3437, 'Dead Sea/ Desert Castle/ Amman airport', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
+(3437, 'Dead Sea/ Desert Castle/ Amman airport', 0.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0);
+INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
 (3438, 'Lunch', 0.00, 293, NULL, NULL, NULL, NULL, NULL, 372, 123, 0),
 (3439, 'Petra-Dead Sea - Dead Sea - Aqaba', 0.00, 140, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (3440, 'Aqaba airport -Aqaba', 0.00, 140, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
@@ -26550,10 +26567,10 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (4018, 'double rooms in HB', 98.68, 718, NULL, NULL, NULL, NULL, NULL, 713, 123, 0),
 (4019, 'single room in HB', 71.77, 718, NULL, NULL, NULL, NULL, NULL, 713, 123, 0),
 (4020, 'Amman/Um Qais/Pella/Ajlun/Amman', 100.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
-(4021, 'Amman/Iraq al Amir/Salt/Amman', 70.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0);
-INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
+(4021, 'Amman/Iraq al Amir/Salt/Amman', 70.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
 (4022, 'Amman/Jerash/Amman city tour', 90.00, 527, NULL, NULL, NULL, NULL, NULL, 148, 123, 0),
-(4023, 'Amman/Desert castles /Amman', 110.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
+(4023, 'Amman/Desert castles /Amman', 110.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0);
+INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `category`, `country`, `restricted`) VALUES
 (4024, 'Amman/Um qais/Pella/Ajlun/Amman', 120.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (4025, 'Amman/Iraq al amir/Salt/Amman', 90.00, 527, NULL, NULL, NULL, NULL, NULL, 149, 123, 0),
 (4026, 'Lunch on the way', 0.00, 416, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
@@ -26615,7 +26632,66 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (4087, 'Airport amman/Petra', 85.00, 527, 'Car', 'Airport amman', 'Petra', '2:00', '80', 720, 123, 0),
 (4088, 'Wadi Rum/Queen Alia', 130.00, 527, 'Car', 'Wadi Rum', 'Queen Alia', '2:00', '80', 720, 123, 0),
 (4089, 'single room testing', 50.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0),
-(4090, 'RAMA ROOM', 100.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0);
+(4090, 'RAMA ROOM', 100.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0),
+(4091, 'rama sk task', 100.00, 0, 'Bus', 'Amman', 'Jordan', '66', '70', 718, 123, 0),
+(4092, 'jkljl,j trhfghfghfdhfdhfdghfghgfh nthtyujhtr', 43.00, 0, NULL, NULL, NULL, NULL, NULL, 647, 123, 0),
+(4093, 'XXXXSSSSSS', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 328, 123, 0),
+(4094, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4095, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4096, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4097, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4098, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4099, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4100, 'Lunch Box', 5.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4101, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4102, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4103, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4104, 'Full Day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4105, 'Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4106, 'Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4107, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4108, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4109, 'little Petra to Petra', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4110, 'Full Day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4111, 'Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4112, 'Local guide - Little Petra to Monastery', 40.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4113, 'Homestay Petra  - Alaa', 20.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4114, 'Local Guide - Little Petra', 15.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4115, 'Local Guide - Little Petra - Back Way', 40.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4116, 'transfer little petra to mesreh', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4117, 'Local Guide in little Petra', 10.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4118, 'Tour for 3h', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4119, 'Tour for Elder', 100.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4120, 'Tour for Elder and High place', 150.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4121, 'Hani Nawafleh Italian( English)  guide', 0.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4122, 'twin room in HB', 70.80, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4123, 'Double room in HB', 48.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4124, 'kitchen lesson', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4125, 'kitchen lesson', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4126, 'Italian guide', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4127, 'RAMA TEST', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4128, 'RAMA LUNCH', 0.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4129, 'RAMA LUNCH', 70.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4130, 'rama xyz', 90.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4131, 'Jeep tour - 2 Hours', 25.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4132, 'Jeep tour - 3 Hours', 40.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4133, 'Jeep tour - 4 Hours', 50.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4134, 'Lunch box - Wadi Rum', 5.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4135, 'Jeep tour - 5 Hours', 60.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4136, 'Jeep tour -  6 Hours', 60.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4137, 'Camel Ride - 1 hour', 30.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4138, 'hello rama', 88.00, 246, NULL, NULL, NULL, NULL, NULL, 478, 123, 0),
+(4139, 'hello ra', 33.00, 147, NULL, NULL, NULL, NULL, NULL, 147, 123, 0),
+(4140, 'rama test van', 70.00, 0, 'Van', 'Amman', 'Jordan', '5', '40', 717, 123, 0),
+(4141, 'hello rama activity', 555.00, 478, NULL, NULL, NULL, NULL, NULL, 142, 123, 0),
+(4145, 'rama test64', 90.00, 142, NULL, NULL, NULL, NULL, NULL, 216, 123, 0),
+(4146, 'rama sk', 333.00, 147, NULL, NULL, NULL, NULL, NULL, 508, 123, 0),
+(4147, 'sdfdsf', 55.00, 147, NULL, NULL, NULL, NULL, NULL, 147, 123, 0),
+(4148, 'rama accommodation', 44.00, 275, NULL, NULL, NULL, NULL, NULL, 403, 123, 0),
+(4149, 'rama test', 100.00, 0, 'Bus with driver', 'Amman', 'Jordan', '5', '66', 716, 123, 0),
+(4151, 'rama', 77.00, 768, 'City Tour Guide', 'Licensed', '[\"uploads\\/services\\/1783223801_images4.jpg\",\"uploads\\/services\\/1783223801_images5.jpg\",\"uploads\\/services\\/1783223801_images.jpg\",\"uploads\\/services\\/1783227535_download4.jpg\"]', NULL, NULL, 527, 123, 0),
+(4152, 'rar sk tet', 300.00, 768, 'Day Guide', 'Licensed', '[\"uploads\\/services\\/1783228274_images2.jpg\",\"uploads\\/services\\/1783228274_images3.jpg\",\"uploads\\/services\\/1783228274_images4.jpg\"]', NULL, NULL, 527, 123, 0),
+(4153, 'aayush k', 50.00, 768, 'City Tour Guide', 'Senior', '[\"uploads\\/services\\/1783228295_images2.jpg\",\"uploads\\/services\\/1783228295_images3.jpg\"]', NULL, NULL, 527, 123, 0);
 
 -- --------------------------------------------------------
 
@@ -26686,7 +26762,7 @@ INSERT INTO `en33_services_categories` (`id`, `name`, `parent_id`, `country_id`,
 (195, 'Marina Plaza Hotel', 426, 123, NULL, NULL, NULL, NULL),
 (198, 'Grand Tala Bay Aqaba', 430, 123, NULL, NULL, NULL, NULL),
 (199, 'Movenpick Resort and Residences', 430, 123, NULL, NULL, NULL, NULL),
-(204, 'Testing', 0, 123, NULL, NULL, NULL, NULL),
+(204, 'Activities in jordan', 0, 123, NULL, NULL, NULL, NULL),
 (212, 'Ibraheem Al-Amarat', 455, 123, NULL, NULL, NULL, NULL),
 (214, 'Jeep Tour', 204, 123, NULL, NULL, NULL, NULL),
 (215, 'Lunch', 204, 123, NULL, NULL, NULL, NULL),
@@ -33809,7 +33885,8 @@ CREATE TABLE `en33_transports` (
 
 INSERT INTO `en33_transports` (`id`, `description`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
 (1, 'Al Raha bus', 0, 157, 715, 123, 0, '[\"uploads\\/services\\/1782931276_images3.jpg\",\"uploads\\/services\\/1782931276_images4.jpg\"]', 'xvxc', NULL, NULL, NULL, NULL, NULL, 'petra', NULL, NULL, NULL, '2026-06-30 07:53:38', '2026-07-01 23:30:12'),
-(2, 'Al Raha bus', 0, 0, 718, 123, 0, '[\"uploads\\/services\\/1782986907_images4.jpg\",\"uploads\\/services\\/1782986907_images5.jpg\",\"uploads\\/services\\/1782986907_images.jpg\"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-07-02 04:36:46', '2026-07-02 04:38:27');
+(2, 'Al Raha bus', 0, 0, 718, 123, 0, '[\"uploads\\/services\\/1782986907_images4.jpg\",\"uploads\\/services\\/1782986907_images5.jpg\",\"uploads\\/services\\/1782986907_images.jpg\"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-07-02 04:36:46', '2026-07-02 04:38:27'),
+(3, 'Al Raha bus', 0, 0, 716, 123, 0, '[\"uploads\\/services\\/1783147396_6a48ab845704d_images4.jpg\",\"uploads\\/services\\/1783147396_6a48ab84575f1_images5.jpg\",\"uploads\\/services\\/1783147396_6a48ab84577f4_images.jpg\",\"uploads\\/services\\/1783181362_images4.jpg\"]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-07-04 01:13:16', '2026-07-04 10:39:22');
 
 -- --------------------------------------------------------
 
@@ -35328,7 +35405,7 @@ ALTER TABLE `en33_accommodations`
 -- AUTO_INCREMENT for table `en33_activities`
 --
 ALTER TABLE `en33_activities`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `en33_cities`
@@ -35406,13 +35483,13 @@ ALTER TABLE `en33_pages`
 -- AUTO_INCREMENT for table `en33_restaurants`
 --
 ALTER TABLE `en33_restaurants`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `en33_services`
 --
 ALTER TABLE `en33_services`
-  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4091;
+  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4155;
 
 --
 -- AUTO_INCREMENT for table `en33_services_categories`
@@ -35586,7 +35663,7 @@ ALTER TABLE `en33_tours_types`
 -- AUTO_INCREMENT for table `en33_transports`
 --
 ALTER TABLE `en33_transports`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `en33_users`

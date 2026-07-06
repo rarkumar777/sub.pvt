@@ -62,7 +62,11 @@ class ServiceController extends Controller
         }
 
         return view('admin.services.index', compact(
-            'countries', 'countryId', 'categoryId', 'tree', 'allCategories'
+            'countries',
+            'countryId',
+            'categoryId',
+            'tree',
+            'allCategories'
         ));
     }
 
@@ -106,17 +110,25 @@ class ServiceController extends Controller
         }
 
         // Get vender list for these categories
+        $categoryNameCache = [];
         $venderList = Service::whereIn('category', $allCategoryIds)
             ->whereNotNull('vender')
             ->with('venderUser')
             ->get()
-            ->pluck('venderUser')
+            ->groupBy('vender')
+            ->map(function ($group) use (&$categoryNameCache) {
+                $u = $group->first()->venderUser;
+                if (!$u) return null;
+                // For Transportation services, the "vendor" concept is the transport
+                // company category (e.g. "Al Raha bus"), not the linked user account's
+                // profile fields, which are managed separately and can drift out of sync.
+                $transportName = $this->resolveTransportCompanyName($group->first()->category, $categoryNameCache);
+                $name = $transportName ?? (!empty($u->company) ? $u->company : $u->email);
+                return ['id' => $u->id, 'name' => $name];
+            })
             ->filter()
             ->unique('id')
-            ->mapWithKeys(function ($u) {
-                $name = !empty($u->company) ? $u->company : $u->email;
-                return [$u->id => $name];
-            })
+            ->pluck('name', 'id')
             ->toArray();
 
         // Auto-select vendor if not manually specified and there is a primary vendor
@@ -140,8 +152,28 @@ class ServiceController extends Controller
         $services = $query->orderByDesc('id')->paginate(20);
         $services->appends($request->query());
 
+        // Attach a display-ready vendor label to each service. For Transportation
+        // services this is the transport company category name (e.g. "Al Raha bus"),
+        // which is the vendor concept used everywhere else in the Transport module.
+        foreach ($services as $svc) {
+            $transportName = $this->resolveTransportCompanyName($svc->category, $categoryNameCache);
+            if ($transportName) {
+                $svc->display_vendor_name = $transportName;
+            } elseif ($svc->venderUser) {
+                $svc->display_vendor_name = !empty($svc->venderUser->company) ? $svc->venderUser->company : $svc->venderUser->email;
+            } else {
+                $svc->display_vendor_name = null;
+            }
+        }
+
         $html = view('admin.services._services_panel', compact(
-            'category', 'breadcrumb', 'services', 'venderList', 'venderId', 'countryId', 'categoryId'
+            'category',
+            'breadcrumb',
+            'services',
+            'venderList',
+            'venderId',
+            'countryId',
+            'categoryId'
         ))->render();
 
         return response()->json(['html' => $html]);
@@ -183,6 +215,65 @@ class ServiceController extends Controller
             }
         }
         return implode(' > ', $parents);
+    }
+
+    /**
+     * Robustly decode a service's stored `image` value into a flat list of paths.
+     * Historically this field has been written in inconsistent formats across
+     * different code paths (a single plain path, a PHP serialize()'d array, a
+     * JSON-encoded array, or - due to a past bug - a JSON array wrapping a
+     * serialized string). This handles all of them, including one level of
+     * nested serialization, so existing corrupted records self-heal on display.
+     */
+    private function decodeServiceImages($imgPath)
+    {
+        $images = [];
+        if (!$imgPath) return $images;
+
+        $decoded = @unserialize($imgPath);
+        if ($decoded === false && $imgPath !== 'b:0;') {
+            $decoded = @json_decode($imgPath, true);
+        }
+        $items = is_array($decoded) ? $decoded : [$imgPath];
+
+        foreach ($items as $item) {
+            if (!is_string($item)) continue;
+            $item = trim($item);
+            if ($item === '') continue;
+            // Unwrap one level of nested serialization (from the double-encoding bug)
+            $inner = @unserialize($item);
+            if (is_array($inner)) {
+                foreach ($inner as $p) {
+                    if (is_string($p) && trim($p) !== '') $images[] = trim($p);
+                }
+            } else {
+                $images[] = $item;
+            }
+        }
+        return $images;
+    }
+
+    /**
+     * For a given category id, resolve the name of its transport "company" category
+     * (the direct child of the Transportation root, e.g. "Al Raha bus"), if this
+     * category belongs to the Transportation tree. Returns null otherwise.
+     */
+    private function resolveTransportCompanyName($categoryId, array &$cache)
+    {
+        $transportRootId = 715;
+        $current = $categoryId;
+        for ($i = 0; $current && $i < 10; $i++) {
+            if (!array_key_exists($current, $cache)) {
+                $cache[$current] = ServiceCategory::find($current);
+            }
+            $cat = $cache[$current];
+            if (!$cat) return null;
+            if ($cat->parent_id == $transportRootId) return $cat->name;
+            if ($cat->id == $transportRootId) return null; // the root itself, no company
+            if ($cat->parent_id == 0) return null; // belongs to a different tree entirely
+            $current = $cat->parent_id;
+        }
+        return null;
     }
 
     public function create(Request $request)
@@ -260,7 +351,7 @@ class ServiceController extends Controller
         $html .= '<input type="hidden" name="country" value="' . $countryId . '">';
 
         $html .= '<div style="display:flex; flex-wrap:nowrap; gap:20px; padding:0 25px; margin-bottom:20px; align-items:flex-end;">';
-        
+
         // Vender (read-only display - no dropdown icon)
         $defaultVenderName = 'Select';
         foreach ($venders as $v) {
@@ -329,11 +420,21 @@ class ServiceController extends Controller
         $data['restricted'] = $request->input('restricted', 0);
         $data['cost'] = $data['cost'] ?? 0;
         $data['vender'] = $request->input('vender', 0) ?: 0;
-        if ($request->has('notes')) { $data['notes'] = $request->input('notes'); }
-        if ($request->has('acc_type')) { $data['acc_type'] = $request->input('acc_type'); }
-        if ($request->has('acc_category')) { $data['acc_category'] = $request->input('acc_category'); }
-        if ($request->has('website')) { $data['website'] = $request->input('website'); }
-        if ($request->has('arrival')) { $data['arrival'] = $request->input('arrival'); }
+        if ($request->has('notes')) {
+            $data['notes'] = $request->input('notes');
+        }
+        if ($request->has('acc_type')) {
+            $data['acc_type'] = $request->input('acc_type');
+        }
+        if ($request->has('acc_category')) {
+            $data['acc_category'] = $request->input('acc_category');
+        }
+        if ($request->has('website')) {
+            $data['website'] = $request->input('website');
+        }
+        if ($request->has('arrival')) {
+            $data['arrival'] = $request->input('arrival');
+        }
 
         $serviceType = $request->input('service_type', '');
 
@@ -358,32 +459,150 @@ class ServiceController extends Controller
         }
 
         if ($serviceType === 'transport') {
-            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
-            if ($request->has('method'))      { $data['transport_method']    = $request->input('method'); }
-            if ($request->has('departure'))   { $data['departure_location']  = $request->input('departure'); }
-            if ($request->has('arrival'))     { $data['arrival_destination'] = $request->input('arrival'); }
-            if ($request->has('length_time')) { $data['length_time']         = $request->input('length_time'); }
+            if (!empty($allImages)) {
+                $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages);
+            }
+            if ($request->has('transport_method')) {
+                $data['transport_method'] = $request->input('transport_method');
+            } elseif ($request->has('method')) {
+                $data['transport_method'] = $request->input('method');
+            }
+            if ($request->has('departure_location')) {
+                $data['departure_location'] = $request->input('departure_location');
+            } elseif ($request->has('departure')) {
+                $data['departure_location'] = $request->input('departure');
+            }
+            if ($request->has('arrival_destination')) {
+                $data['arrival_destination'] = $request->input('arrival_destination');
+            } elseif ($request->has('arrival')) {
+                $data['arrival_destination'] = $request->input('arrival');
+            }
+            if ($request->has('length_time')) {
+                $data['length_time'] = $request->input('length_time');
+            }
+            if ($request->has('distance_km')) {
+                $data['distance_km'] = $request->input('distance_km');
+            }
             \App\Models\Transport::create($data);
+
+            // Handle sub_services rows from the Create Transport form
+            if ($request->has('sub_services') && is_array($request->input('sub_services'))) {
+                foreach ($request->input('sub_services') as $subSvc) {
+                    if (!empty(trim($subSvc['description'] ?? ''))) {
+                        Service::create([
+                            'description' => trim($subSvc['description']),
+                            'cost' => $subSvc['cost'] ?? 0,
+                            'category' => $data['category'],
+                            'country' => $data['country'] ?? 0,
+                            'vender' => $data['vender'] ?? 0,
+                            'transport_method' => $subSvc['transport_method'] ?? '',
+                            'departure_location' => $subSvc['departure_location'] ?? '',
+                            'arrival_destination' => $subSvc['arrival_destination'] ?? '',
+                            'length_time' => $subSvc['length_time'] ?? '',
+                            'distance_km' => $subSvc['distance_km'] ?? '',
+                        ]);
+                    }
+                }
+            }
 
         } elseif ($serviceType === 'accommodation') {
             // Accommodation uses 'descriptionL' column instead of 'description'
-            if (!empty($allImages)) { $data['image'] = serialize($allImages); }
+            if (!empty($allImages)) {
+                $data['image'] = serialize($allImages);
+            }
             $accomData = $data;
             $accomData['descriptionL'] = $accomData['description'] ?? '';
             unset($accomData['description']);
             \App\Models\Accommodation::create($accomData);
 
+            // Handle property services (sub-activities)
+            if ($request->has('prop_desc') && is_array($request->input('prop_desc'))) {
+                $propDescs = $request->input('prop_desc');
+                $propCosts = $request->input('prop_cost');
+                $propTypes = $request->input('prop_type');
+                $propCats = $request->input('prop_cat');
+                $propIds = $request->input('prop_id', []);
+
+                foreach ($propDescs as $index => $desc) {
+                    if (!empty(trim($desc))) {
+                        $activityData = [
+                            'description' => trim($desc),
+                            'cost' => $propCosts[$index] ?? 0,
+                            'acc_type' => $propTypes[$index] ?? '',
+                            'acc_category' => $propCats[$index] ?? '',
+                            'country' => $data['country'] ?? 0,
+                            'category' => $data['category'] ?? 0,
+                            'vender' => $data['vender'] ?? 0,
+                        ];
+
+                        if (!empty($propIds[$index])) {
+                            \App\Models\Activity::where('id', $propIds[$index])->update($activityData);
+                        } else {
+                            \App\Models\Activity::create($activityData);
+                        }
+                    }
+                }
+            }
+
         } elseif ($serviceType === 'restaurant') {
-            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
+            if (!empty($allImages)) {
+                $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages);
+            }
             \App\Models\Restaurant::create($data);
 
+            // Handle sub_services rows from the Create Restaurant form
+            if ($request->has('sub_services') && is_array($request->input('sub_services'))) {
+                foreach ($request->input('sub_services') as $subSvc) {
+                    if (!empty(trim($subSvc['description'] ?? ''))) {
+                        Service::create([
+                            'description' => trim($subSvc['description']),
+                            'cost' => $subSvc['cost'] ?? 0,
+                            'category' => $data['category'],
+                            'country' => $data['country'] ?? 0,
+                            'vender' => $data['vender'] ?? 0,
+                        ]);
+                    }
+                }
+            }
+
         } elseif ($serviceType === 'activity') {
-            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : serialize($allImages); }
+            if (!empty($allImages)) {
+                // Use JSON encoding to match the format expected/written by the
+                // update() endpoint and the Modify activity photo display, so
+                // multi-photo activities don't end up with unreadable images.
+                $data['image'] = json_encode(array_values($allImages));
+            }
+            if ($request->has('acc_category')) {
+                $data['acc_category'] = $request->input('acc_category');
+            }
             \App\Models\Activity::create($data);
+
+            if ($request->has('sub_services') && is_array($request->input('sub_services'))) {
+                foreach ($request->input('sub_services') as $subSvc) {
+                    if (!empty(trim($subSvc['description'] ?? ''))) {
+                        // Real activity services must live under a specific activity-type
+                        // category (Jeep Tour, Lunch, Horse Ride, etc), never the generic
+                        // container category ($data['category']) - otherwise they save
+                        // successfully but never show up in the vendor's services list.
+                        // The frontend supplies the correct category per-row (taken from
+                        // an existing sibling service of the selected vendor); fall back
+                        // to the container category only if none was supplied.
+                        Service::create([
+                            'description' => trim($subSvc['description']),
+                            'cost' => $subSvc['cost'] ?? 0,
+                            'category' => !empty($subSvc['category']) ? intval($subSvc['category']) : $data['category'],
+                            'country' => $data['country'] ?? 0,
+                            'vender' => $data['vender'] ?? 0,
+                        ]);
+                    }
+                }
+            }
 
         } else {
             // guide or generic
-            if (!empty($allImages)) { $data['image'] = count($allImages) === 1 ? $allImages[0] : json_encode($allImages); }
+            if (!empty($allImages)) {
+                $data['image'] = count($allImages) === 1 ? $allImages[0] : json_encode($allImages);
+            }
             Service::create($data);
         }
 
@@ -501,18 +720,34 @@ class ServiceController extends Controller
                     $checkCat = $cat;
                     while ($checkCat) {
                         $cn = strtolower($checkCat->name);
-                        if (stripos($cn, 'accommod') !== false) { $isAccommodation = true; break; }
-                        if (stripos($cn, 'transport') !== false || stripos($cn, 'tranport') !== false) { $isTransport = true; break; }
-                        if (stripos($cn, 'activit') !== false || stripos($cn, 'pvt') !== false || $checkCat->id == 93) { $isActivity = true; break; }
-                        if (stripos($cn, 'guide') !== false || $checkCat->id == 527) { $isGuide = true; break; }
+                        if (stripos($cn, 'accommod') !== false) {
+                            $isAccommodation = true;
+                            break;
+                        }
+                        if (stripos($cn, 'transport') !== false || stripos($cn, 'tranport') !== false) {
+                            $isTransport = true;
+                            break;
+                        }
+                        if (stripos($cn, 'activit') !== false || stripos($cn, 'pvt') !== false || $checkCat->id == 93) {
+                            $isActivity = true;
+                            break;
+                        }
+                        if (stripos($cn, 'guide') !== false || $checkCat->id == 527) {
+                            $isGuide = true;
+                            break;
+                        }
                         $checkCat = $checkCat->parent_id ? ServiceCategory::find($checkCat->parent_id) : null;
                     }
                 }
             }
-            if ($isAccommodation) return $this->editAccommodationModal($service);
-            if ($isTransport)     return $this->editTransportModal($service);
-            if ($isActivity)      return $this->editActivityModal($service);
-            if ($isGuide)         return $this->editGuideModal($service);
+            if ($isAccommodation)
+                return $this->editAccommodationModal($service);
+            if ($isTransport)
+                return $this->editTransportModal($service);
+            if ($isActivity)
+                return $this->editActivityModal($service);
+            if ($isGuide)
+                return $this->editGuideModal($service);
         }
 
         // Default edit form for non-accommodation services
@@ -607,41 +842,135 @@ class ServiceController extends Controller
             ['emoji' => '🇳🇱', 'code' => 'nl'],
         ];
 
-        $imgPath   = $service->image ?? '';
-        $desc      = htmlspecialchars($service->description ?? '');
-        $sid       = $service->id;
+        $imgPath = $service->image ?? '';
+        $desc = htmlspecialchars($service->description ?? '');
+        $sid = $service->id;
         $countryId = $service->country ?? 123;
 
         if (!$service->relationLoaded('serviceCategory')) {
             $service->load('serviceCategory.parent.parent.parent');
         }
 
-        $arrival     = $service->arrival;
-        $accType     = $service->acc_type;
+        $arrival = $service->arrival;
+        $accType = $service->acc_type;
         $accCategory = $service->acc_category;
 
         if ($service->serviceCategory) {
-            $cat   = $service->serviceCategory;
+            $cat = $service->serviceCategory;
             $chain = [];
             $walker = $cat->parent ?? null;
-            while ($walker) { $chain[] = $walker; $walker = $walker->parent ?? null; }
-            if (!$arrival && isset($chain[0])) { $arrival = $chain[0]->name; }
-            $typeMap = ['Hotels'=>'Hotel','Camps'=>'Camp','Homestay'=>'Guesthouse','Homestays'=>'Guesthouse','Mobile Camp'=>'Camp','Wild Jordan RSCN'=>'Eco-lodge'];
-            $starMap = ['1 Star'=>'1 ★','2 Star'=>'2 ★★','3 Star'=>'3 ★★★','4 Stars'=>'4 ★★★★','5 Stars'=>'5 ★★★★★'];
+            while ($walker) {
+                $chain[] = $walker;
+                $walker = $walker->parent ?? null;
+            }
+            if (!$arrival && isset($chain[0])) {
+                $arrival = $chain[0]->name;
+            }
+            $typeMap = ['Hotels' => 'Hotel', 'Camps' => 'Camp', 'Homestay' => 'Guesthouse', 'Homestays' => 'Guesthouse', 'Mobile Camp' => 'Camp', 'Wild Jordan RSCN' => 'Eco-lodge'];
+            $starMap = ['1 Star' => '1 ★', '2 Star' => '2 ★★', '3 Star' => '3 ★★★', '4 Stars' => '4 ★★★★', '5 Stars' => '5 ★★★★★'];
             foreach ($chain as $node) {
-                if (!$accType && isset($typeMap[$node->name])) { $accType = $typeMap[$node->name]; }
-                if (!$accCategory && isset($starMap[$node->name])) { $accCategory = $starMap[$node->name]; }
+                if (!$accType && isset($typeMap[$node->name])) {
+                    $accType = $typeMap[$node->name];
+                }
+                if (!$accCategory && isset($starMap[$node->name])) {
+                    $accCategory = $starMap[$node->name];
+                }
             }
         }
 
         // Header
-        $html  = '<script>';
-        $html .= 'document.getElementById("libModalHead").innerHTML=\'';
+        $html = '<script>';
+        $html .= 'var head = document.getElementById("libModalHead") || document.getElementById("catModalHead");';
+        $html .= 'if(head) { head.innerHTML=\'';
         $html .= '<h3>Modify Activity</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
-        $html .= '<a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
+        $html .= '<a href="javascript:void(0)" onclick="(typeof closeCatModal === \\\'function\\\' ? closeCatModal : closeModal)()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
         $html .= '<button form="editActSecForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button>';
-        $html .= '</div>\';';
+        $html .= '</div>\'; }';
+
+        $html .= '
+        window.actSecEditDt = new DataTransfer();
+
+        window.addActSecImages = function(input) {
+            if(input.files && input.files.length > 0){
+                for(var i=0; i<input.files.length; i++){
+                    window.actSecEditDt.items.add(input.files[i]);
+                }
+            }
+            input.value = "";
+            window.renderActSecImages();
+        };
+
+        window.renderActSecImages = function() {
+            var row = document.getElementById("actSecPhotosRow");
+            if(!row) return;
+            var addBtn = row.lastElementChild;
+            var exisitingNew = row.querySelectorAll(".new-act-sec-photo-wrap");
+            exisitingNew.forEach(function(e) { e.remove(); });
+
+            for(let i=0; i<window.actSecEditDt.files.length; i++){
+                (function(idx) {
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        var div = document.createElement("div");
+                        div.className = "acc-photo-wrap new-act-sec-photo-wrap";
+                        div.style.cssText = "position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;";
+                        div.innerHTML = "<img src=\'" + e.target.result + "\' style=\'width:100%;height:100%;border-radius:4px;object-fit:cover;\'>" +
+                                        "<button type=\'button\' onclick=\'removeActSecNewImg(" + idx + ")\' style=\'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;\'>✕</button>";
+                        row.insertBefore(div, addBtn);
+                    };
+                    reader.readAsDataURL(window.actSecEditDt.files[idx]);
+                })(i);
+            }
+        };
+
+        window.removeActSecNewImg = function(idx) {
+            var newDt = new DataTransfer();
+            for(var i=0; i<window.actSecEditDt.files.length; i++){
+                if(i !== idx) newDt.items.add(window.actSecEditDt.files[i]);
+            }
+            window.actSecEditDt = newDt;
+            window.renderActSecImages();
+        };
+
+        window.submitEditAccSection = function(id) {
+            var form = document.getElementById("editActSecForm");
+            var fd = new FormData(form);
+            fd.append("_method","PUT");
+            fd.append("_token","' . csrf_token() . '");
+            fd.append("service_type","accommodation"); // Ensure this matches exactly what the backend expects
+
+            fd.delete("new_images[]");
+            for(var i=0; i<window.actSecEditDt.files.length; i++){
+                fd.append("new_images[]", window.actSecEditDt.files[i]);
+            }
+
+            var btn = form.querySelector("button[type=submit]");
+            if(btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(r) {
+                    if (typeof closeCatModal === "function") closeCatModal();
+                    else if (typeof closeModal === "function") closeModal();
+
+                    if (typeof reloadCatList === "function") reloadCatList();
+                    else if (typeof loadLib === "function") loadLib();
+                    else location.reload();
+
+                    if (typeof showToast === "function") showToast("Service updated!", "success");
+                },
+                error: function(x) {
+                    if(btn) { btn.disabled = false; btn.innerText = "Save"; }
+                    if (typeof showToast === "function") showToast("Error: " + (x.responseJSON && x.responseJSON.message ? x.responseJSON.message : "Could not update"), "error");
+                }
+            });
+        };
+        ';
         $html .= '</script>';
 
         $html .= '<form id="editActSecForm" onsubmit="submitEditAccSection(' . $sid . '); return false;" enctype="multipart/form-data">';
@@ -651,7 +980,7 @@ class ServiceController extends Controller
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
-            $bg     = $active ? '#ea580c' : 'transparent';
+            $bg = $active ? '#ea580c' : 'transparent';
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
@@ -667,7 +996,21 @@ class ServiceController extends Controller
 
         // Photos section
         $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        if ($imgPath) {
+            $d = @unserialize($imgPath);
+            if ($d === false && $imgPath !== 'b:0;') {
+                $d = @json_decode($imgPath, true);
+            }
+            if (is_array($d)) {
+                foreach ($d as $p) {
+                    if (trim($p) !== '')
+                        $existingImages[] = $p;
+                }
+            } else {
+                if (trim($imgPath) !== '')
+                    $existingImages[] = $imgPath;
+            }
+        }
         $html .= '<div style="margin-bottom:16px;">';
         $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
         $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
@@ -677,8 +1020,9 @@ class ServiceController extends Controller
         $html .= '<div id="actSecPhotosRow" style="border:1px dashed #ccc;border-radius:4px;min-height:120px;display:flex;overflow-x:auto;gap:8px;padding:8px;align-items:center;">';
         foreach ($existingImages as $img) {
             $imgUrl = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
-            $html .= '<div class="acc-photo-wrap" style="position:relative;flex-shrink:0;height:104px;">';
-            $html .= '<img src="' . $imgUrl . '" style="height:100%;border-radius:4px;object-fit:cover;">';
+            $imgUrl = str_replace('/public/', '/', $imgUrl);
+            $html .= '<div class="acc-photo-wrap" style="position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;">';
+            $html .= '<img src="' . $imgUrl . '" style="width:100%;height:100%;border-radius:4px;object-fit:cover;" onerror="this.onerror=null; this.src=\'https://via.placeholder.com/104?text=Photo\';">';
             $html .= '<input type="hidden" name="existing_images[]" value="' . htmlspecialchars($img) . '">';
             $html .= '<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
             $html .= '</div>';
@@ -711,20 +1055,26 @@ class ServiceController extends Controller
         $html .= '<div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div>';
         $html .= '</fieldset>';
 
-        $accTypes = ['Hotel','Guesthouse','Hostel','Resort','Apartment','Camp','Eco-lodge','Riad','Villa'];
+        $accTypes = ['Hotel', 'Guesthouse', 'Hostel', 'Resort', 'Apartment', 'Camp', 'Eco-lodge', 'Riad', 'Villa'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Accommodation Type</legend>';
         $html .= '<select name="acc_type" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
         $html .= '<option value="">Select a type</option>';
-        foreach ($accTypes as $t) { $sel = ($accType === $t) ? ' selected' : ''; $html .= '<option value="' . $t . '"' . $sel . '>' . $t . '</option>'; }
+        foreach ($accTypes as $t) {
+            $sel = ($accType === $t) ? ' selected' : '';
+            $html .= '<option value="' . $t . '"' . $sel . '>' . $t . '</option>';
+        }
         $html .= '</select></fieldset>';
 
-        $cats = ['1 ★','2 ★★','3 ★★★','4 ★★★★','5 ★★★★★','Standard','Superior','Luxury'];
+        $cats = ['1 ★', '2 ★★', '3 ★★★', '4 ★★★★', '5 ★★★★★', 'Standard', 'Superior', 'Luxury'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Category</legend>';
         $html .= '<select name="acc_category" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
         $html .= '<option value="">Select a category</option>';
-        foreach ($cats as $c) { $sel = ($accCategory === $c) ? ' selected' : ''; $html .= '<option value="' . $c . '"' . $sel . '>' . $c . '</option>'; }
+        foreach ($cats as $c) {
+            $sel = ($accCategory === $c) ? ' selected' : '';
+            $html .= '<option value="' . $c . '"' . $sel . '>' . $c . '</option>';
+        }
         $html .= '</select></fieldset>';
 
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;">';
@@ -756,14 +1106,14 @@ class ServiceController extends Controller
         $html .= '<div style="flex:1;min-width:120px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Activity Type</label>';
         $html .= '<select id="newActType" style="width:100%;height:36px;border:1px solid #e2e8f0;border-radius:6px;padding:0 8px;font-size:12px;background:#fff;color:#555;">';
         $html .= '<option value="">-- Type --</option>';
-        foreach (['Entrance','Excursion','Adventure','Cultural','Cooking','Water Sport','Desert Safari','Hiking','Religious','Other'] as $at) {
+        foreach (['Entrance', 'Excursion', 'Adventure', 'Cultural', 'Cooking', 'Water Sport', 'Desert Safari', 'Hiking', 'Religious', 'Other'] as $at) {
             $html .= '<option value="' . $at . '">' . $at . '</option>';
         }
         $html .= '</select></div>';
         $html .= '<div style="flex:1;min-width:120px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Activity Category</label>';
         $html .= '<select id="newActCat" style="width:100%;height:36px;border:1px solid #e2e8f0;border-radius:6px;padding:0 8px;font-size:12px;background:#fff;color:#555;">';
         $html .= '<option value="">-- Category --</option>';
-        foreach (['Standard','Premium','VIP','Group','Private','Family'] as $ac) {
+        foreach (['Standard', 'Premium', 'VIP', 'Group', 'Private', 'Family'] as $ac) {
             $html .= '<option value="' . $ac . '">' . $ac . '</option>';
         }
         $html .= '</select></div>';
@@ -843,6 +1193,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
     private function editAccommodationModal($service)
     {
+        $venders = \App\Models\User::where('user_group', 'supplier')->orderBy('first_name')->get();
         $flags = [
             ['emoji' => '🇫🇷', 'code' => 'fr'],
             ['emoji' => '🇬🇧', 'code' => 'en'],
@@ -863,8 +1214,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         }
 
         // Auto-derive fields from category hierarchy if NULL in DB
-        $arrival    = $service->arrival;
-        $accType    = $service->acc_type;
+        $arrival = $service->arrival;
+        $accType = $service->acc_type;
         $accCategory = $service->acc_category;
 
         if ($service->serviceCategory) {
@@ -885,13 +1236,19 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             }
 
             $typeMap = [
-                'Hotels' => 'Hotel', 'Camps' => 'Camp', 'Homestay' => 'Guesthouse',
-                'Homestays' => 'Guesthouse', 'Mobile Camp' => 'Camp',
+                'Hotels' => 'Hotel',
+                'Camps' => 'Camp',
+                'Homestay' => 'Guesthouse',
+                'Homestays' => 'Guesthouse',
+                'Mobile Camp' => 'Camp',
                 'Wild Jordan RSCN' => 'Eco-lodge',
             ];
             $starMap = [
-                '1 Star' => '1 ★', '2 Star' => '2 ★★', '3 Star' => '3 ★★★',
-                '4 Stars' => '4 ★★★★', '5 Stars' => '5 ★★★★★',
+                '1 Star' => '1 ★',
+                '2 Star' => '2 ★★',
+                '3 Star' => '3 ★★★',
+                '4 Stars' => '4 ★★★★',
+                '5 Stars' => '5 ★★★★★',
             ];
 
             foreach ($chain as $node) {
@@ -905,13 +1262,99 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         }
 
         $html = '<script>';
-        $html .= 'document.getElementById("libModalHead").innerHTML=\'';
+        $html .= 'var head = document.getElementById("libModalHead") || document.getElementById("catModalHead");';
+        $html .= 'if(head) { head.innerHTML=\'';
         $html .= '<h3>Modify accommodation</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
-        $html .= '<a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
+        $html .= '<a href="javascript:void(0)" onclick="(typeof closeCatModal === \\\'function\\\' ? closeCatModal : closeModal)()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
         $html .= '<button form="editAccForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button>';
-        $html .= '</div>\';';
+        $html .= '</div>\'; }';
+
+        $html .= '
+        window.accEditDt = new DataTransfer();
+
+        window.addAccImages = function(input) {
+            if(input.files && input.files.length > 0){
+                for(var i=0; i<input.files.length; i++){
+                    window.accEditDt.items.add(input.files[i]);
+                }
+            }
+            input.value = "";
+            window.renderAccImages();
+        };
+
+        window.renderAccImages = function() {
+            var row = document.getElementById("catPhotosRow") || document.getElementById("accPhotosRow");
+            if(!row) return;
+            var addBtn = row.lastElementChild;
+            var exisitingNew = row.querySelectorAll(".new-acc-photo-wrap");
+            exisitingNew.forEach(function(e) { e.remove(); });
+
+            for(let i=0; i<window.accEditDt.files.length; i++){
+                (function(idx) {
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        var div = document.createElement("div");
+                        div.className = "acc-photo-wrap new-acc-photo-wrap";
+                        div.style.cssText = "position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;";
+                        div.innerHTML = "<img src=\'" + e.target.result + "\' style=\'width:100%;height:100%;border-radius:4px;object-fit:cover;\'>" +
+                                        "<button type=\'button\' onclick=\'removeAccNewImg(" + idx + ")\' style=\'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;\'>✕</button>";
+                        row.insertBefore(div, addBtn);
+                    };
+                    reader.readAsDataURL(window.accEditDt.files[idx]);
+                })(i);
+            }
+        };
+
+        window.removeAccNewImg = function(idx) {
+            var newDt = new DataTransfer();
+            for(var i=0; i<window.accEditDt.files.length; i++){
+                if(i !== idx) newDt.items.add(window.accEditDt.files[i]);
+            }
+            window.accEditDt = newDt;
+            window.renderAccImages();
+        };
+
+        window.submitEditAcc = function(id) {
+            var form = document.getElementById("editAccForm");
+            var fd = new FormData(form);
+            fd.append("_method","PUT");
+            fd.append("_token","' . csrf_token() . '");
+            fd.append("service_type","accommodation");
+
+            fd.delete("new_images[]");
+            for(var i=0; i<window.accEditDt.files.length; i++){
+                fd.append("new_images[]", window.accEditDt.files[i]);
+            }
+
+            var btn = form.querySelector("button[type=submit]");
+            if(btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(r) {
+                    if (typeof closeCatModal === "function") closeCatModal();
+                    else if (typeof closeModal === "function") closeModal();
+
+                    if (typeof reloadCatList === "function") reloadCatList();
+                    else if (typeof loadLib === "function") loadLib();
+                    else location.reload();
+
+                    if (typeof showToast === "function") showToast("Accommodation updated!", "success");
+                },
+                error: function(x) {
+                    if(btn) { btn.disabled = false; btn.innerText = "Save"; }
+                    if (typeof showToast === "function") showToast("Error: " + (x.responseJSON && x.responseJSON.message ? x.responseJSON.message : "Could not update"), "error");
+                }
+            });
+        };
+        ';
         $html .= '</script>';
+
 
         $html .= '<form id="editAccForm" onsubmit="submitEditAcc(' . $sid . '); return false;" enctype="multipart/form-data">';
         $html .= csrf_field();
@@ -925,24 +1368,37 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
         // Vendor info bar
-        $vendorName = $service->venderUser
-            ? (!empty($service->venderUser->company) ? strtoupper($service->venderUser->company) : strtoupper($service->venderUser->first_name . ' ' . $service->venderUser->last_name))
-            : strtoupper($service->description ?? '');
-        $html .= '<div style="margin-left:auto;display:flex;gap:16px;align-items:center;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:6px 14px;font-size:12px;">';
-        $html .= '<span><strong>Vendor Name:</strong> ' . htmlspecialchars($vendorName) . '</span>';
+        $venderOpts = '<option value="">Select an owner/vender account...</option>';
+        foreach ($venders as $v) {
+            $vName = !empty($v->company) ? $v->company : trim($v->first_name . ' ' . ($v->last_name ?? ''));
+            if (!$vName)
+                $vName = $v->email;
+            $selected = ($service->vender == $v->id) ? ' selected' : '';
+            $venderOpts .= '<option value="' . $v->id . '"' . $selected . '>' . htmlspecialchars($vName) . '</option>';
+        }
+
+        $html .= '<div style="margin-left:auto;display:flex;gap:16px;align-items:center;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:6px 14px;font-size:12px;width:75%;">';
+        $html .= '<div style="flex:1;"><select id="edit_modal_vender_select" name="vender" style="width:100%;height:30px;border:1px solid #ddd;border-radius:4px;outline:none;">' . $venderOpts . '</select></div>';
         $html .= '<span style="color:#ccc;">|</span>';
-        $html .= '<span><strong>Vendor Price:</strong> <span style="color:#ea580c;font-weight:700;">' . number_format($service->cost ?? 0, 2) . ' JOD</span></span>';
+        $html .= '<span style="white-space:nowrap;"><strong>Vendor Price:</strong> <span style="color:#ea580c;font-weight:700;"><input type="number" name="cost" value="' . ($service->cost ?? 0) . '" step="0.01" style="width:70px;height:24px;border:1px solid #ddd;border-radius:4px;padding:2px 6px;outline:none;"> JOD</span></span>';
         $html .= '</div>';
         $html .= '</div>';
 
         // Photos section - multi-image support
         $existingImages = [];
         if ($imgPath) {
-            $decoded = @json_decode($imgPath, true);
-            if (is_array($decoded)) {
-                $existingImages = $decoded;
+            $d = @unserialize($imgPath);
+            if ($d === false && $imgPath !== 'b:0;') {
+                $d = @json_decode($imgPath, true);
+            }
+            if (is_array($d)) {
+                foreach ($d as $p) {
+                    if (trim($p) !== '')
+                        $existingImages[] = $p;
+                }
             } else {
-                $existingImages = [$imgPath];
+                if (trim($imgPath) !== '')
+                    $existingImages[] = $imgPath;
             }
         }
 
@@ -957,8 +1413,9 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         foreach ($existingImages as $idx => $img) {
             $imgUrl = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
-            $html .= '<div class="acc-photo-wrap" style="position:relative;flex-shrink:0;height:104px;">';
-            $html .= '<img src="' . $imgUrl . '" style="height:100%;border-radius:4px;object-fit:cover;">';
+            $imgUrl = str_replace('/public/', '/', $imgUrl);
+            $html .= '<div class="acc-photo-wrap" style="position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;">';
+            $html .= '<img src="' . $imgUrl . '" style="width:100%;height:100%;border-radius:4px;object-fit:cover;" onerror="this.onerror=null; this.src=\'https://via.placeholder.com/104?text=Photo\';">';
             $html .= '<input type="hidden" name="existing_images[]" value="' . htmlspecialchars($img) . '">';
             $html .= '<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
             $html .= '</div>';
@@ -977,7 +1434,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div style="flex:1;">';
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Name of accommodation</legend>';
-        $html .= '<input type="text" name="description" required style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '">';
+        $html .= '<input type="text" id="editAccDescInput" name="description" required style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '">';
         $html .= '<div style="position:absolute;right:0;bottom:-18px;font-size:10px;color:#bbb;">(' . strlen($service->description) . '/255)</div>';
         $html .= '</fieldset>';
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;">';
@@ -998,7 +1455,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</fieldset>';
 
         // Accommodation type
-        $accTypes = ['Hotel','Guesthouse','Hostel','Resort','Apartment','Camp','Eco-lodge','Riad','Villa'];
+        $accTypes = ['Hotel', 'Guesthouse', 'Hostel', 'Resort', 'Apartment', 'Camp', 'Eco-lodge', 'Riad', 'Villa'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Accommodation type</legend>';
         $html .= '<select name="acc_type" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1010,7 +1467,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</select></fieldset>';
 
         // Category
-        $cats = ['1 ★','2 ★★','3 ★★★','4 ★★★★','5 ★★★★★','Standard','Superior','Luxury'];
+        $cats = ['1 ★', '2 ★★', '3 ★★★', '4 ★★★★', '5 ★★★★★', 'Standard', 'Superior', 'Luxury'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Category</legend>';
         $html .= '<select name="acc_category" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1037,8 +1494,19 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         // SERVICES LIST — from en33_services WHERE category IN (hotel category + all descendants)
         $hotelCatIds = $this->getAllDescendantIds($service->category, $service->country ?? 123);
         $hotelCatIds[] = $service->category;
-        $hotelServices = \App\Models\Service::whereIn('category', $hotelCatIds)->with('venderUser')->orderBy('description')->get();
-        $html .= '<div style="margin-top:20px;">';
+
+        $allHotelServices = \App\Models\Service::whereIn('category', $hotelCatIds)->with('venderUser')->orderBy('description')->get();
+
+        $defaultVender = $service->vender ?? null;
+        if (!$defaultVender && $allHotelServices->isNotEmpty()) {
+            $defaultVender = $allHotelServices->filter(fn($s) => $s->vender)->groupBy('vender')->sortByDesc(fn($g) => $g->count())->keys()->first();
+        }
+
+        $hotelServices = $defaultVender
+            ? $allHotelServices->where('vender', $defaultVender)
+            : $allHotelServices;
+
+        $html .= '<div id="editModalServicesList" style="margin-top:20px;">';
         $html .= '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
         $html .= '<span style="color:#e53e3e;font-size:11px;font-weight:800;letter-spacing:1px;">🇯🇴 SERVICES LIST</span>';
         $html .= '<button type="button" onclick="toggleAccomAddForm()" style="background:#ea580c;border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;"><i class="fa fa-plus"></i> Add Service</button>';
@@ -1050,11 +1518,6 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
         $html .= '<div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="newAccomSvcDesc" placeholder="e.g. Double room HB" style="width:100%;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 10px;font-size:12px;outline:none;"></div>';
         $html .= '<div style="flex:1;min-width:100px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="newAccomSvcCost" step="0.01" placeholder="0.00" style="width:100%;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 10px;font-size:12px;outline:none;"></div>';
-        // Detect default vendor — use accommodation's own vender, or most common from existing services
-        $defaultVender = $service->vender ?? null;
-        if (!$defaultVender && $hotelServices->isNotEmpty()) {
-            $defaultVender = $hotelServices->filter(fn($s) => $s->vender)->groupBy('vender')->sortByDesc(fn($g) => $g->count())->keys()->first();
-        }
         $html .= '<div style="flex:2;min-width:140px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Vendor</label><select id="newAccomSvcVender" style="width:100%;height:34px;border:1px solid #ddd;border-radius:6px;padding:0 8px;font-size:12px;outline:none;"><option value="">-- Select vendor --</option>';
         foreach ($suppliers as $sup) {
             $supName = !empty($sup->company) ? $sup->company : ($sup->first_name . ' ' . $sup->last_name);
@@ -1086,8 +1549,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<td style="padding:7px 8px;">' . htmlspecialchars($vName) . '</td>';
             $html .= '<td style="padding:7px 8px;text-align:right;white-space:nowrap;">';
             $html .= '<button onclick="openSeasons(' . $svc->id . ')" style="background:#ffedd5;border:none;color:#ea580c;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:4px;">🗓 Seasons</button>';
-            $html .= '<button onclick="editSvc(' . $svc->id . ')" style="background:#f0f4ff;border:none;color:#3b82f6;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:4px;"><i class="fa fa-pencil"></i></button>';
-            $html .= '<button onclick="delSvc(' . $svc->id . ',\'' . addslashes($svc->description) . '\')" style="background:#fff5f5;border:none;color:#e53e3e;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;"><i class="fa fa-trash"></i></button>';
+            $html .= '<button onclick="editAccomRowSvc(' . $svc->id . ')" style="background:#f0f4ff;border:none;color:#3b82f6;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:4px;"><i class="fa fa-pencil"></i></button>';
+            $html .= '<button onclick="delAccomRowSvc(' . $svc->id . ',\'' . addslashes($svc->description) . '\')" style="background:#fff5f5;border:none;color:#e53e3e;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;"><i class="fa fa-trash"></i></button>';
             $html .= '</td></tr>';
         }
         if ($hotelServices->isEmpty()) {
@@ -1096,6 +1559,35 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</tbody></table></div>';
         $csrf = csrf_token();
         $html .= '<script>
+setTimeout(function() {
+    if (typeof SlimSelect !== "undefined") {
+        try {
+            new SlimSelect({
+                select: "#edit_modal_vender_select",
+                searchPlaceholder: "Search vendors...",
+                placeholder: "Select an owner/vender account...",
+                onChange: function(info) {
+                    var val = info && info.value ? info.value : (Array.isArray(info) && info[0] ? info[0].value : null);
+                    var text = info && info.text ? info.text : (Array.isArray(info) && info[0] ? info[0].text : "");
+                    if (!val) return;
+
+                    var descInp = document.getElementById("editAccDescInput");
+                    if (descInp && text) descInp.value = text;
+
+                    var container = document.getElementById("editModalServicesList");
+                    if (!container) return;
+                    container.innerHTML = "<div style=\'text-align:center;padding:20px;\'><i class=\'fa fa-spinner fa-spin\' style=\'color:#ea580c\'></i> Loading services...</div>";
+                    $.get("/admin/vendor/" + val + "/services", function(res) {
+                        if (!res || !res.html) { container.innerHTML = "<p style=\'padding:16px;color:#999;font-size:12px;text-align:center;\'>No services found for this vendor.</p>"; return; }
+                        container.innerHTML = res.html;
+                    }).fail(function() {
+                        container.innerHTML = "<p style=\'color:red;font-size:12px;padding:10px;\'>Failed to load services.</p>";
+                    });
+                }
+            });
+        } catch (e) {}
+    }
+}, 100);
 function toggleAccomAddForm(){var f=document.getElementById("accomAddSvcForm");if(f)f.style.display=f.style.display==="none"?"block":"none";}
 function saveAccomSvc(catId,countryId){
     var desc=document.getElementById("newAccomSvcDesc").value.trim();
@@ -1108,32 +1600,32 @@ function saveAccomSvc(catId,countryId){
         error:function(x){showToast("Error: "+(x.responseJSON&&x.responseJSON.message?x.responseJSON.message:"Could not add service"),"error");}
     });
 }
-function editSvc(id){
+function editAccomRowSvc(id){
     var old=document.getElementById("svcEditForm_"+id);if(old){old.remove();return;}
-    var row=document.querySelector("button[onclick*=\\"editSvc("+id+")\\"]").closest("tr");
+    var row=document.querySelector("button[onclick*=\\"editAccomRowSvc("+id+")\\"]").closest("tr");
     var desc=row.querySelector("td:first-child").textContent.trim();
     var costText=row.querySelector("td:nth-child(2)").textContent.trim();
     var cost=parseFloat(costText.replace(/[^0-9.]/g,""))||0;
     var editRow=document.createElement("tr");editRow.id="svcEditForm_"+id;
-    editRow.innerHTML=\'<td colspan="4" style="padding:10px 8px;background:#f8fafc;"><div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;"><div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="editSvcDesc_\'+id+\'" value="\'+desc.replace(/\\\'/g,"&#39;")+\'" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div><div style="flex:1;min-width:90px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="editSvcCost_\'+id+\'" value="\'+cost+\'" step="0.01" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div><div style="display:flex;gap:6px;"><button type="button" onclick="saveEditSvc(\'+id+\')" style="height:34px;background:#ea580c;border:none;color:#fff;border-radius:6px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;">Save</button><button type="button" onclick="cancelEditSvc(\'+id+\')" style="height:34px;background:#f1f5f9;border:none;color:#64748b;border-radius:6px;padding:0 12px;font-size:12px;cursor:pointer;">Cancel</button></div></div></td>\';
+    editRow.innerHTML=\'<td colspan="4" style="padding:10px 8px;background:#f8fafc;"><div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;"><div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="editSvcDesc_\'+id+\'" value="\'+desc.replace(/\\\'/g,"&#39;")+\'" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div><div style="flex:1;min-width:90px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="editSvcCost_\'+id+\'" value="\'+cost+\'" step="0.01" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div><div style="display:flex;gap:6px;"><button type="button" onclick="saveAccomRowSvc(\'+id+\')" style="height:34px;background:#ea580c;border:none;color:#fff;border-radius:6px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;">Save</button><button type="button" onclick="cancelAccomRowSvc(\'+id+\')" style="height:34px;background:#f1f5f9;border:none;color:#64748b;border-radius:6px;padding:0 12px;font-size:12px;cursor:pointer;">Cancel</button></div></div></td>\';
     row.parentNode.insertBefore(editRow,row.nextSibling);
 }
-function saveEditSvc(id){
+function saveAccomRowSvc(id){
     var newDesc=document.getElementById("editSvcDesc_"+id).value.trim();
     var newCost=document.getElementById("editSvcCost_"+id).value;
     if(!newDesc){alert("Please enter a description.");return;}
     $.ajax({url:"/admin/services/"+id,type:"POST",
         data:{_token:"' . $csrf . '",_method:"PUT",description:newDesc,cost:newCost,service_type:"service"},
-        success:function(){var row=document.getElementById("svcEditForm_"+id);if(row){var prev=row.previousElementSibling;if(prev){prev.querySelector("td:first-child").textContent=newDesc;prev.querySelector("td:nth-child(2)").innerHTML=parseFloat(newCost||0).toFixed(2)+" JOD";}}cancelEditSvc(id);showToast("Service updated!","success");},
+        success:function(){var row=document.getElementById("svcEditForm_"+id);if(row){var prev=row.previousElementSibling;if(prev){prev.querySelector("td:first-child").textContent=newDesc;prev.querySelector("td:nth-child(2)").innerHTML=parseFloat(newCost||0).toFixed(2)+" JOD";}}cancelAccomRowSvc(id);showToast("Service updated!","success");},
         error:function(){showToast("Error updating service","error");}
     });
 }
-function cancelEditSvc(id){var f=document.getElementById("svcEditForm_"+id);if(f)f.remove();}
-function delSvc(id,desc){
+function cancelAccomRowSvc(id){var f=document.getElementById("svcEditForm_"+id);if(f)f.remove();}
+function delAccomRowSvc(id,desc){
     if(!confirm("Delete service: "+desc+"?"))return;
     $.ajax({url:"/admin/services/"+id,type:"POST",
         data:{_token:"' . $csrf . '",_method:"DELETE",service_type:"service"},
-        success:function(){var btn=document.querySelector("button[onclick*=\\"delSvc("+id+",\\"]");if(btn){var row=btn.closest("tr");if(row)row.remove();}showToast("Service deleted!","success");},
+        success:function(){var btn=document.querySelector("button[onclick*=\\"delAccomRowSvc("+id+",\\"]");if(btn){var row=btn.closest("tr");if(row)row.remove();}showToast("Service deleted!","success");},
         error:function(){showToast("Error deleting service","error");}
     });
 }
@@ -1168,35 +1660,44 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             ['emoji' => '🇳🇱', 'code' => 'nl'],
         ];
 
-        $imgPath   = $service->image ?? '';
-        $desc      = htmlspecialchars($service->description ?? '');
-        $sid       = $service->id;
+        $imgPath = $service->image ?? '';
+        $desc = htmlspecialchars($service->description ?? '');
+        $sid = $service->id;
         $countryId = $service->country ?? 123;
 
         if (!$service->relationLoaded('serviceCategory')) {
             $service->load('serviceCategory.parent.parent.parent');
         }
 
-        $arrival     = $service->arrival;
-        $accType     = $service->acc_type;
+        $arrival = $service->arrival;
+        $accType = $service->acc_type;
         $accCategory = $service->acc_category;
 
         if ($service->serviceCategory) {
-            $cat   = $service->serviceCategory;
+            $cat = $service->serviceCategory;
             $chain = [];
             $walker = $cat->parent ?? null;
-            while ($walker) { $chain[] = $walker; $walker = $walker->parent ?? null; }
-            if (!$arrival && isset($chain[0])) { $arrival = $chain[0]->name; }
-            $typeMap = ['Hotels'=>'Hotel','Camps'=>'Camp','Homestay'=>'Guesthouse','Homestays'=>'Guesthouse','Mobile Camp'=>'Camp','Wild Jordan RSCN'=>'Eco-lodge'];
-            $starMap = ['1 Star'=>'1 ★','2 Star'=>'2 ★★','3 Star'=>'3 ★★★','4 Stars'=>'4 ★★★★','5 Stars'=>'5 ★★★★★'];
+            while ($walker) {
+                $chain[] = $walker;
+                $walker = $walker->parent ?? null;
+            }
+            if (!$arrival && isset($chain[0])) {
+                $arrival = $chain[0]->name;
+            }
+            $typeMap = ['Hotels' => 'Hotel', 'Camps' => 'Camp', 'Homestay' => 'Guesthouse', 'Homestays' => 'Guesthouse', 'Mobile Camp' => 'Camp', 'Wild Jordan RSCN' => 'Eco-lodge'];
+            $starMap = ['1 Star' => '1 ★', '2 Star' => '2 ★★', '3 Star' => '3 ★★★', '4 Stars' => '4 ★★★★', '5 Stars' => '5 ★★★★★'];
             foreach ($chain as $node) {
-                if (!$accType && isset($typeMap[$node->name])) { $accType = $typeMap[$node->name]; }
-                if (!$accCategory && isset($starMap[$node->name])) { $accCategory = $starMap[$node->name]; }
+                if (!$accType && isset($typeMap[$node->name])) {
+                    $accType = $typeMap[$node->name];
+                }
+                if (!$accCategory && isset($starMap[$node->name])) {
+                    $accCategory = $starMap[$node->name];
+                }
             }
         }
 
         // Header
-        $html  = '<script>';
+        $html = '<script>';
         $html .= 'document.getElementById("libModalHead").innerHTML=\'';
         $html .= '<h3>Modify Transport</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
@@ -1212,7 +1713,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
-            $bg     = $active ? '#ea580c' : 'transparent';
+            $bg = $active ? '#ea580c' : 'transparent';
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
@@ -1228,7 +1729,10 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         // Photos section
         $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        if ($imgPath) {
+            $d = @json_decode($imgPath, true);
+            $existingImages = is_array($d) ? $d : [$imgPath];
+        }
         $html .= '<div style="margin-bottom:16px;">';
         $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
         $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
@@ -1276,7 +1780,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</fieldset>';
 
         // Accommodation type
-        $accTypes = ['Hotel','Guesthouse','Hostel','Resort','Apartment','Camp','Eco-lodge','Riad','Villa'];
+        $accTypes = ['Hotel', 'Guesthouse', 'Hostel', 'Resort', 'Apartment', 'Camp', 'Eco-lodge', 'Riad', 'Villa'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Accommodation type</legend>';
         $html .= '<select name="acc_type" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1288,7 +1792,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</select></fieldset>';
 
         // Category
-        $cats = ['1 ★','2 ★★','3 ★★★','4 ★★★★','5 ★★★★★','Standard','Superior','Luxury'];
+        $cats = ['1 ★', '2 ★★', '3 ★★★', '4 ★★★★', '5 ★★★★★', 'Standard', 'Superior', 'Luxury'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Category</legend>';
         $html .= '<select name="acc_category" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1440,35 +1944,44 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             ['emoji' => '🇳🇱', 'code' => 'nl'],
         ];
 
-        $imgPath   = $service->image ?? '';
-        $desc      = htmlspecialchars($service->description ?? '');
-        $sid       = $service->id;
+        $imgPath = $service->image ?? '';
+        $desc = htmlspecialchars($service->description ?? '');
+        $sid = $service->id;
         $countryId = $service->country ?? 123;
 
         if (!$service->relationLoaded('serviceCategory')) {
             $service->load('serviceCategory.parent.parent.parent');
         }
 
-        $arrival     = $service->arrival;
-        $accType     = $service->acc_type;
+        $arrival = $service->arrival;
+        $accType = $service->acc_type;
         $accCategory = $service->acc_category;
 
         if ($service->serviceCategory) {
-            $cat   = $service->serviceCategory;
+            $cat = $service->serviceCategory;
             $chain = [];
             $walker = $cat->parent ?? null;
-            while ($walker) { $chain[] = $walker; $walker = $walker->parent ?? null; }
-            if (!$arrival && isset($chain[0])) { $arrival = $chain[0]->name; }
-            $typeMap = ['Hotels'=>'Hotel','Camps'=>'Camp','Homestay'=>'Guesthouse','Homestays'=>'Guesthouse','Mobile Camp'=>'Camp','Wild Jordan RSCN'=>'Eco-lodge'];
-            $starMap = ['1 Star'=>'1 ★','2 Star'=>'2 ★★','3 Star'=>'3 ★★★','4 Stars'=>'4 ★★★★','5 Stars'=>'5 ★★★★★'];
+            while ($walker) {
+                $chain[] = $walker;
+                $walker = $walker->parent ?? null;
+            }
+            if (!$arrival && isset($chain[0])) {
+                $arrival = $chain[0]->name;
+            }
+            $typeMap = ['Hotels' => 'Hotel', 'Camps' => 'Camp', 'Homestay' => 'Guesthouse', 'Homestays' => 'Guesthouse', 'Mobile Camp' => 'Camp', 'Wild Jordan RSCN' => 'Eco-lodge'];
+            $starMap = ['1 Star' => '1 ★', '2 Star' => '2 ★★', '3 Star' => '3 ★★★', '4 Stars' => '4 ★★★★', '5 Stars' => '5 ★★★★★'];
             foreach ($chain as $node) {
-                if (!$accType && isset($typeMap[$node->name])) { $accType = $typeMap[$node->name]; }
-                if (!$accCategory && isset($starMap[$node->name])) { $accCategory = $starMap[$node->name]; }
+                if (!$accType && isset($typeMap[$node->name])) {
+                    $accType = $typeMap[$node->name];
+                }
+                if (!$accCategory && isset($starMap[$node->name])) {
+                    $accCategory = $starMap[$node->name];
+                }
             }
         }
 
         // Header
-        $html  = '<script>';
+        $html = '<script>';
         $html .= 'document.getElementById("libModalHead").innerHTML=\'';
         $html .= '<h3>Modify Restaurant</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
@@ -1484,7 +1997,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
-            $bg     = $active ? '#ea580c' : 'transparent';
+            $bg = $active ? '#ea580c' : 'transparent';
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
@@ -1500,7 +2013,10 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         // Photos
         $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        if ($imgPath) {
+            $d = @json_decode($imgPath, true);
+            $existingImages = is_array($d) ? $d : [$imgPath];
+        }
         $html .= '<div style="margin-bottom:16px;">';
         $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
         $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
@@ -1545,7 +2061,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div>';
         $html .= '</fieldset>';
 
-        $accTypes = ['Hotel','Guesthouse','Hostel','Resort','Apartment','Camp','Eco-lodge','Riad','Villa'];
+        $accTypes = ['Hotel', 'Guesthouse', 'Hostel', 'Resort', 'Apartment', 'Camp', 'Eco-lodge', 'Riad', 'Villa'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Accommodation type</legend>';
         $html .= '<select name="acc_type" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1556,7 +2072,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         }
         $html .= '</select></fieldset>';
 
-        $cats = ['1 ★','2 ★★','3 ★★★','4 ★★★★','5 ★★★★★','Standard','Superior','Luxury'];
+        $cats = ['1 ★', '2 ★★', '3 ★★★', '4 ★★★★', '5 ★★★★★', 'Standard', 'Superior', 'Luxury'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Category</legend>';
         $html .= '<select name="acc_category" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -1674,7 +2190,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     /**
      * Evaneos-style "Modify transport" modal
      */
-        private function editRestaurantModal($service)
+    private function editRestaurantModal($service)
     {
         $flags = [
             ['emoji' => '🇫🇷', 'code' => 'fr'],
@@ -1693,19 +2209,20 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $arrival = htmlspecialchars($service->arrival ?? '');
 
         $html = '<script>';
-        $html .= 'document.getElementById("libModalHead").innerHTML=\'';
+        $html .= 'var head = document.getElementById("libModalHead") || document.getElementById("catModalHead");';
+        $html .= 'if(head) { head.innerHTML=\'';
         $html .= '<h3>Modify restaurant</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
-        $html .= '<a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
+        $html .= '<a href="javascript:void(0)" onclick="(typeof closeCatModal === \\\'function\\\' ? closeCatModal : closeModal)()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
         $html .= '<button form="editRestForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button>';
-        $html .= '</div>\';';
+        $html .= '</div>\'; }';
         $html .= '</script>';
 
         $html .= '<form id="editRestForm" onsubmit="submitEditRestaurant(' . $sid . '); return false;">';
         $html .= csrf_field();
         $html .= '<input type="hidden" name="service_type" value="restaurant">';
 
-        // Flags
+        // Flags & Select Restaurant Top Row
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
@@ -1713,17 +2230,37 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
+
+        $html .= '<div style="margin-left:auto;display:flex;gap:16px;align-items:center;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:6px 14px;font-size:12px;width:75%;">';
+        $html .= '<div style="flex:1;"><label style="font-size:10px;font-weight:700;color:#555;margin-bottom:2px;display:block">Select Vendor</label>';
+        $html .= '<select id="edit_modal_vender_select" name="vender" onchange="if(typeof processRestEditChange === \'function\') processRestEditChange(this.value);" style="width:100%;height:30px;border:1px solid #ddd;border-radius:4px;outline:none;" required>';
+        $html .= '<option value="">Select a vendor...</option>';
+        $html .= '</select></div></div>';
+        $currentVender = intval($service->vender ?? 0);
+        $html .= '<script>var gCurrentVender = ' . $currentVender . ';</script>';
         $html .= '</div>';
 
         // Photos
         $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        if ($imgPath) {
+            $d = @unserialize($imgPath);
+            if ($d === false && $imgPath !== 'b:0;') {
+                $d = @json_decode($imgPath, true);
+            }
+            if (is_array($d)) {
+                foreach ($d as $p) {
+                    if (trim($p) !== '') $existingImages[] = $p;
+                }
+            } else {
+                if (trim($imgPath) !== '') $existingImages[] = $imgPath;
+            }
+        }
         $html .= '<div style="margin-bottom:16px;">';
         $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
         $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
         $html .= '<a href="#" onclick="return false;" style="font-size:11px;font-weight:700;color:#ea580c;text-decoration:none;">How to choose the right photos?</a>';
         $html .= '</div>';
-        $html .= '<input type="file" name="new_images[]" id="editRestImageInput" accept="image/*" multiple style="display:none" onchange="addActSecImages(this)">';
+        $html .= '<input type="file" name="new_images[]" id="editRestImageInput" accept="image/*" multiple style="display:none" onchange="addRestNewImages(this)">';
         $html .= '<div id="restPhotosRow" style="border:1px dashed #ccc;border-radius:4px;min-height:120px;display:flex;overflow-x:auto;gap:8px;padding:8px;align-items:center;">';
         foreach ($existingImages as $img) {
             $imgUrl = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
@@ -1736,31 +2273,275 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<div onclick="document.getElementById(\'editRestImageInput\').click()" style="flex-shrink:0;width:100px;height:104px;border:2px dashed #ccc;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:28px;">+</div>';
         $html .= '</div></div>';
 
+
+
+
         $html .= '<fieldset style="width:100%;border:1px solid #ddd;border-radius:4px;padding:0;margin:0;margin-bottom:16px;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Restaurant name</legend>';
-        $html .= '<input type="text" name="description" required style="width:100%;height:32px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="'.$desc.'">';
+        $html .= '<input type="text" name="description" required style="width:100%;height:32px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '">';
         $html .= '</fieldset>';
 
         $html .= '<fieldset style="width:100%;border:1px solid #ddd;border-radius:4px;padding:0;margin:0;margin-bottom:16px;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Place of interest</legend>';
-        $html .= '<input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:32px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" placeholder="Add a destination" value="'.$arrival.'" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)">';
+        $html .= '<input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:32px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" placeholder="Add a destination" value="' . $arrival . '" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)">';
         $html .= '<div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div>';
         $html .= '</fieldset>';
 
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;margin-bottom:16px;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Description</legend>';
-        $html .= '<textarea name="notes" style="width:100%;min-height:250px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">'.$notes.'</textarea>';
+        $html .= '<textarea name="notes" style="width:100%;min-height:250px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">' . $notes . '</textarea>';
         $html .= '</fieldset>';
 
         $html .= '<input type="hidden" name="cost" value="' . ($service->cost ?? 0) . '">';
-        $html .= '<input type="hidden" name="category" value="' . ($service->category ?? '') . '">';
         $html .= '</form>';
+
+        // Sub-Services Form for Edit Restaurant Modal
+        $restCsrf = csrf_token();
+        $html .= '<div style="margin-top:20px;">';
+        $html .= '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+        $html .= '<span style="color:#ea580c;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">🍽️ EXISTING SERVICES LIST</span>';
+        $html .= '<button type="button" onclick="toggleRestSubAddForm()" style="background:#ea580c;border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;"><i class="fa fa-plus"></i> Add Service Row</button>';
+        $html .= '</div>';
+
+        $html .= '<div id="restSubAddSvcForm" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;">';
+        $html .= '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        $html .= '<div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="newRestDescEdit" placeholder="e.g. Breakfast" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="flex:1;min-width:90px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="newRestCostEdit" step="0.01" value="0.00" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="display:flex;gap:6px;">';
+        $html .= '<button type="button" onclick="quickAddRestSubEdit(' . ($service->category ?? 0) . ',\'' . $restCsrf . '\', ' . ($service->country ?? 123) . ', ' . ($service->vender ?? 0) . ')" style="height:34px;background:#ea580c;border:none;color:#fff;border-radius:6px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;">Save</button>';
+        $html .= '<button type="button" onclick="toggleRestSubAddForm()" style="height:34px;background:#f1f5f9;border:none;color:#64748b;border-radius:6px;padding:0 12px;font-size:12px;cursor:pointer;">Cancel</button>';
+        $html .= '</div></div></div>';
+
+        $html .= '<div id="restServicesContainer" style="margin-top:0px;"></div>';
+        $html .= '</div>';
+
+        // Load existing sub-services
+        $restaurantSvcs = \App\Models\Service::where('category', $service->category)->get(['id', 'description', 'cost']);
+
+        $html .= '<script>
+        window.currentRestServices = ' . json_encode($restaurantSvcs) . ';
+
+        // Setup toggle
+        window.toggleRestSubAddForm = function() {
+            var f = document.getElementById("restSubAddSvcForm");
+            if (f) {
+                f.style.display = (f.style.display === "none") ? "block" : "none";
+            }
+        };
+
+
+
+        window.processRestEditChange = function(catId) {
+            var cCon = null;
+            var editModal = document.getElementById("edit_service_content");
+            if (editModal) { cCon = editModal.querySelector("#restServicesContainer"); }
+            if (!cCon) {
+                var mb = document.getElementById("catModalBody");
+                if (mb) { cCon = mb.querySelector("#restServicesContainer"); }
+            }
+            if (!cCon) { cCon = document.getElementById("restServicesContainer"); }
+            if (!catId) {
+                window.currentRestServices = [];
+                if (cCon) cCon.innerHTML = "";
+                return;
+            }
+            if (typeof restCategoriesData !== "undefined") {
+                var el = null;
+                for (var gi = 0; gi < restCategoriesData.length; gi++) {
+                    if (String(restCategoriesData[gi].id) === String(catId)) {
+                        el = restCategoriesData[gi];
+                        break;
+                    }
+                }
+                // No longer overwriting the restaurant name input based on vendor selection.
+            }
+            if (typeof restSubServicesData !== "undefined") {
+                window.currentRestServices = restSubServicesData.filter(function(s) {
+                    return String(s.vender) === String(catId);
+                });
+                if (!cCon) return;
+                var svcs = window.currentRestServices;
+                if (svcs.length > 0) {
+                    var h = "<table style=\"width:100%;border-collapse:collapse;font-size:12px;\"><thead><tr><th style=\"padding:8px 6px;text-align:left;color:#64748b;font-size:10px;\">DESCRIPTION</th><th style=\"padding:8px 6px;text-align:left;color:#64748b;font-size:10px;\">COST</th><th style=\"padding:8px 6px;text-align:right;color:#64748b;font-size:10px;\">ACTIONS</th></tr></thead><tbody>";
+                    svcs.forEach(function(act) {
+                        h += "<tr><td style=\"padding:10px 6px;color:#1e293b;font-weight:600;\">" + (act.description || "-") + "</td><td style=\"padding:10px 6px;font-weight:700;color:#dc2626;\">" + parseFloat(act.cost || 0).toFixed(2) + " JOD</td><td style=\"padding:10px 6px;text-align:right;\"><a href=\"javascript:void(0)\" onclick=\"editRestSubSvc(" + act.id + ")\" style=\"margin-right:12px;color:#3b82f6;\">Edit</a> <a href=\"javascript:void(0)\" onclick=\"delRestSubSvc(" + act.id + ")\" style=\"color:#ef4444;\">Delete</a></td></tr>";
+                    });
+                    h += "</tbody></table>";
+                    cCon.innerHTML = h;
+                } else {
+                    cCon.innerHTML = "<div style=\"font-size:12px;color:#718096;text-align:center;padding:10px;margin-top:16px;\">No existing services found for this restaurant.</div>";
+                }
+            }
+        };
+
+        // Auto-populate dropdown and trigger fetch on load
+        setTimeout(function() {
+            var sel = document.getElementById("edit_modal_vender_select");
+            if (sel && typeof restCategoriesData !== "undefined") {
+                restCategoriesData.forEach(function(v){
+                    var o = document.createElement("option"); o.value = v.id; o.textContent = v.name;
+                    if(String(v.id) === String(window.gCurrentVender)) { o.selected = true; }
+                    sel.appendChild(o);
+                });
+                if(sel.value && typeof processRestEditChange === "function") {
+                    processRestEditChange(sel.value);
+                }
+            }
+        }, 50);
+
+        window.quickAddRestSubEdit = function(cat, token, country, vender) {
+            var sel = document.getElementById("edit_modal_vender_select");
+            var actCat = sel ? sel.value : cat;
+            if (!actCat) actCat = cat;
+            var desc = document.getElementById("newRestDescEdit").value;
+            var cost = document.getElementById("newRestCostEdit").value || 0;
+            if(!desc) { alert("Please enter description"); return; }
+            var btn = event.target;
+            btn.innerHTML = "Saving...";
+            btn.disabled = true;
+            $.ajax({
+                url: "/admin/services",
+                type: "POST",
+                data: {
+                    _token: token,
+                    service_type: "service",
+                    description: desc,
+                    cost: cost,
+                    category: actCat,
+                    country: country,
+                    vender: vender
+                },
+                success: function(res) {
+                    btn.innerHTML = "Save"; btn.disabled = false;
+                    document.getElementById("newRestDescEdit").value = "";
+                    document.getElementById("newRestCostEdit").value = "0";
+                    window.currentRestServices.unshift(res.data);
+                    if (typeof window.processRestEditChange === "function") window.processRestEditChange(actCat);
+                    if (typeof showToast==="function") showToast("Service added!", "success");
+                },
+                error: function(x) {
+                    btn.innerHTML = "Save"; btn.disabled = false;
+                    alert("Error saving service");
+                }
+            });
+        };
+
+        window.restEditDt = new DataTransfer();
+
+        window.addRestNewImages = function(input) {
+            if(input.files && input.files.length > 0){
+                for(var i=0; i<input.files.length; i++){
+                    window.restEditDt.items.add(input.files[i]);
+                }
+            }
+            input.value = "";
+            window.renderRestNewImages();
+        };
+
+        window.renderRestNewImages = function() {
+            var row = document.getElementById("restPhotosRow");
+            if(!row) return;
+            var addBtn = row.lastElementChild;
+            var existingNew = row.querySelectorAll(".new-rest-photo-wrap");
+            existingNew.forEach(function(e) { e.remove(); });
+
+            for(let i=0; i<window.restEditDt.files.length; i++){
+                (function(idx) {
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        var div = document.createElement("div");
+                        div.className = "acc-photo-wrap new-rest-photo-wrap";
+                        div.style.cssText = "position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;";
+                        div.innerHTML = "<img src=\'" + e.target.result + "\' style=\'width:100%;height:100%;border-radius:4px;object-fit:cover;\'>" +
+                                        "<button type=\'button\' onclick=\'removeRestNewImg(" + idx + ")\' style=\'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;\'>✕</button>";
+                        row.insertBefore(div, addBtn);
+                    };
+                    reader.readAsDataURL(window.restEditDt.files[idx]);
+                })(i);
+            }
+        };
+
+        window.removeRestNewImg = function(idx) {
+            var newDt = new DataTransfer();
+            for(var i=0; i<window.restEditDt.files.length; i++){
+                if(i !== idx) newDt.items.add(window.restEditDt.files[i]);
+            }
+            window.restEditDt = newDt;
+            window.renderRestNewImages();
+        };
+
+        window.submitEditRestaurant = function(id) {
+            var form = document.getElementById("editRestForm");
+            var fd = new FormData(form);
+            fd.append("_method","PUT");
+            fd.append("_token","' . csrf_token() . '");
+            fd.append("service_type","restaurant");
+
+            fd.delete("new_images[]");
+            if (window.restEditDt) {
+                for(var i=0; i<window.restEditDt.files.length; i++){
+                    fd.append("new_images[]", window.restEditDt.files[i]);
+                }
+            }
+
+            var btn = form.querySelector("button[type=submit]");
+            if(btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(r) {
+                    if (typeof closeCatModal === "function") closeCatModal();
+                    else if (typeof closeModal === "function") closeModal();
+                    if (typeof showToast === "function") showToast("Restaurant updated", "success");
+                    if (typeof refreshData === "function") refreshData(); // Or reload window
+                    else window.location.reload();
+                },
+                error: function(x) {
+                    if(btn) { btn.disabled = false; btn.innerText = "Save"; }
+                    var msg = "Error updating restaurant";
+                    if(x.responseJSON && x.responseJSON.message) msg = x.responseJSON.message;
+                    alert(msg);
+                }
+            });
+        };
+
+        setTimeout(function(){
+            var sel = document.getElementById("edit_modal_vender_select");
+            if (sel && typeof window.processRestEditChange === "function") {
+                window.processRestEditChange(sel.value);
+            }
+        }, 100);
+        </script>';
 
         return response()->json(['html' => $html]);
     }
 
-private function editTransportModal($service)
+    private function editTransportModal($service)
     {
+        // Get the root-level parent of this service's category (Transportation root)
+        $catId = $service->category;
+        $rootId = $catId;
+        $walker = \App\Models\ServiceCategory::find($catId);
+        while ($walker && $walker->parent_id != 0) {
+            $walker = \App\Models\ServiceCategory::find($walker->parent_id);
+            if ($walker) $rootId = $walker->id;
+        }
+        // Collect all category IDs under this Transportation root
+        $transCategories = \App\Models\ServiceCategory::where('parent_id', $rootId)->pluck('id')->toArray();
+        $transCategories[] = $rootId;
+        // Also get sub-sub categories
+        $subIds = \App\Models\ServiceCategory::whereIn('parent_id', $transCategories)->pluck('id')->toArray();
+        $allTransCatIds = array_unique(array_merge($transCategories, $subIds));
+        // Get only vendor IDs who have services under these transport categories
+        $transVenderIds = \App\Models\Activity::whereIn('category', $allTransCatIds)->pluck('vender')->unique()->toArray();
+        $venders = \App\Models\User::where('user_group', 'supplier')
+            ->whereIn('id', $transVenderIds)
+            ->orderBy('first_name')
+            ->get();
         $flags = [
             ['emoji' => '🇫🇷', 'code' => 'fr'],
             ['emoji' => '🇬🇧', 'code' => 'en'],
@@ -1771,6 +2552,7 @@ private function editTransportModal($service)
             ['emoji' => '🇳🇱', 'code' => 'nl'],
         ];
 
+        $imgPath = $service->image ?? '';
         $desc = htmlspecialchars($service->description ?? '');
         $sid = $service->id;
         $method = $service->transport_method ?? '';
@@ -1780,51 +2562,126 @@ private function editTransportModal($service)
         $distKm = htmlspecialchars($service->distance_km ?? '');
         $notes = htmlspecialchars($service->notes ?? '');
 
-        // Auto-derive from title if empty
         if (empty($depLoc) && empty($arrDest) && !empty($service->description)) {
             $parts = explode('/', $service->description);
             if (count($parts) >= 2) {
-                $depLoc = htmlspecialchars(trim($parts[0]));
-                $arrDest = htmlspecialchars(trim(end($parts)));
+                $depLoc = trim($parts[0]);
+                $arrDest = trim(end($parts));
             } else {
                 $parts = explode('-', $service->description);
                 if (count($parts) >= 2) {
-                    $depLoc = htmlspecialchars(trim($parts[0]));
-                    $arrDest = htmlspecialchars(trim(end($parts)));
+                    $depLoc = trim($parts[0]);
+                    $arrDest = trim(end($parts));
                 }
             }
         }
-
-        // Auto-derive method if empty
         if (empty($method)) {
             $lowerDesc = strtolower($service->description ?? '');
-            if (str_contains($lowerDesc, 'bus')) {
-                $method = 'Bus';
-            } elseif (str_contains($lowerDesc, 'plane') || str_contains($lowerDesc, 'flight')) {
-                $method = 'Airplane';
-            } elseif (str_contains($lowerDesc, 'boat') || str_contains($lowerDesc, 'ship') || str_contains($lowerDesc, 'ferry')) {
-                $method = 'Boat';
-            } elseif (str_contains($lowerDesc, 'train')) {
-                $method = 'Train';
-            } else {
-                $method = 'Car';
-            }
+            if (str_contains($lowerDesc, 'bus')) $method = 'Bus';
+            elseif (str_contains($lowerDesc, 'plane') || str_contains($lowerDesc, 'flight')) $method = 'Airplane';
+            elseif (str_contains($lowerDesc, 'boat') || str_contains($lowerDesc, 'ship') || str_contains($lowerDesc, 'ferry')) $method = 'Boat';
+            elseif (str_contains($lowerDesc, 'train')) $method = 'Train';
+            else $method = 'Car';
         }
 
-        // Header: Modify transport + Cancel/Save
         $html = '<script>';
-        $html .= 'document.getElementById("libModalHead").innerHTML=\'';
+        $html .= 'var head = document.getElementById("libModalHead") || document.getElementById("catModalHead");';
+        $html .= 'if(head) { head.innerHTML=\'';
         $html .= '<h3>Modify transport</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
-        $html .= '<a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
+        $html .= '<a href="javascript:void(0)" onclick="(typeof closeCatModal === \\\'function\\\' ? closeCatModal : closeModal)()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
         $html .= '<button form="editTransForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button>';
-        $html .= '</div>\';';
+        $html .= '</div>\'; }';
+
+        $html .= '
+        window.transEditDt = new DataTransfer();
+
+        window.addTransImages = function(input) {
+            if(input.files && input.files.length > 0){
+                for(var i=0; i<input.files.length; i++){
+                    window.transEditDt.items.add(input.files[i]);
+                }
+            }
+            input.value = "";
+            window.renderTransImages();
+        };
+
+        window.renderTransImages = function() {
+            var row = document.getElementById("transPhotosRow");
+            if(!row) return;
+            var addBtn = row.lastElementChild;
+            var exisitingNew = row.querySelectorAll(".new-trans-photo-wrap");
+            exisitingNew.forEach(function(e) { e.remove(); });
+
+            for(let i=0; i<window.transEditDt.files.length; i++){
+                (function(idx) {
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        var div = document.createElement("div");
+                        div.className = "trans-photo-wrap new-trans-photo-wrap";
+                        div.style.cssText = "position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;";
+                        div.innerHTML = "<img src=\'" + e.target.result + "\' style=\'width:100%;height:100%;border-radius:4px;object-fit:cover;\'>" +
+                                        "<button type=\'button\' onclick=\'removeTransNewImg(" + idx + ")\' style=\'position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;\'>✕</button>";
+                        row.insertBefore(div, addBtn);
+                    };
+                    reader.readAsDataURL(window.transEditDt.files[idx]);
+                })(i);
+            }
+        };
+
+        window.removeTransNewImg = function(idx) {
+            var newDt = new DataTransfer();
+            for(var i=0; i<window.transEditDt.files.length; i++){
+                if(i !== idx) newDt.items.add(window.transEditDt.files[i]);
+            }
+            window.transEditDt = newDt;
+            window.renderTransImages();
+        };
+
+        window.submitEditTrans = function(id) {
+            var form = document.getElementById("editTransForm");
+            var fd = new FormData(form);
+            fd.append("_method","PUT");
+            fd.append("_token","' . csrf_token() . '");
+            fd.append("service_type","transport");
+
+            fd.delete("new_images[]");
+            for(var i=0; i<window.transEditDt.files.length; i++){
+                fd.append("new_images[]", window.transEditDt.files[i]);
+            }
+
+            var btn = form.querySelector("button[type=submit]");
+            if(btn) { btn.disabled = true; btn.innerText = "Saving..."; }
+
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: fd,
+                processData: false,
+                contentType: false,
+                success: function(r) {
+                    if (typeof closeCatModal === "function") closeCatModal();
+                    else if (typeof closeModal === "function") closeModal();
+
+                    if (typeof reloadCatList === "function") reloadCatList();
+                    else if (typeof loadLib === "function") loadLib();
+                    else location.reload();
+
+                    if (typeof showToast === "function") showToast("Transport updated!", "success");
+                },
+                error: function(x) {
+                    if(btn) { btn.disabled = false; btn.innerText = "Save"; }
+                    if (typeof showToast === "function") showToast("Error: " + (x.responseJSON && x.responseJSON.message ? x.responseJSON.message : "Could not update"), "error");
+                }
+            });
+        };
+        ';
         $html .= '</script>';
 
-        $html .= '<form id="editTransForm" onsubmit="submitEditTransport(' . $sid . '); return false;">';
+        $html .= '<form id="editTransForm" onsubmit="submitEditTrans(' . $sid . '); return false;" enctype="multipart/form-data">';
         $html .= csrf_field();
 
-        // Language flags
+        // Top Row: Flags & Vendor Price info
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
@@ -1832,158 +2689,665 @@ private function editTransportModal($service)
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
+
+        // Build dropdown from transport company category names (Ismael cars, Al Raha bus etc.)
+        // Value = vendor user ID for proper data relationship
+        $transCompanyCategories = \App\Models\ServiceCategory::where('parent_id', $rootId)->orderBy('name')->get();
+        $venderOpts = '<option value="">Select a vendor...</option>';
+        $companyMethodData = [];
+
+        // Determine the ACTUAL vendor (company) this service belongs to, based purely on
+        // its real category relationship. This is the single source of truth. A
+        // description-text fallback is only used when no real category match exists at
+        // all — it must never override a real match, otherwise two options can end up
+        // marked "selected" at once and the dropdown won't match the service's real data.
+        $companyCatId = 0;
+        $companyCatIdsMap = [];
+        foreach ($transCompanyCategories as $companyCat) {
+            $childCatIds = \App\Models\ServiceCategory::where('parent_id', $companyCat->id)->pluck('id')->toArray();
+            $companyCatIdsMap[$companyCat->id] = array_merge([$companyCat->id], $childCatIds);
+            if (in_array($service->category, $companyCatIdsMap[$companyCat->id])) {
+                $companyCatId = $companyCat->id;
+            }
+        }
+        if ($companyCatId === 0) {
+            foreach ($transCompanyCategories as $companyCat) {
+                if (strcasecmp(trim($service->description ?? ''), trim($companyCat->name)) === 0) {
+                    $companyCatId = $companyCat->id;
+                    break;
+                }
+            }
+        }
+
+        foreach ($transCompanyCategories as $companyCat) {
+            $selected = ($companyCat->id === $companyCatId) ? ' selected' : '';
+            // Use category ID as unique option value so select works correctly
+            $venderOpts .= '<option value="' . $companyCat->id . '" data-catid="' . $companyCat->id . '"' . $selected . '>' . htmlspecialchars($companyCat->name) . '</option>';
+
+            $directSvcs = \App\Models\Service::where('category', $companyCat->id)->get(['id', 'description', 'cost', 'vender', 'departure_location', 'arrival_destination', 'length_time', 'distance_km', 'transport_method']);
+            $methodsList = [];
+            $methodCats = \App\Models\ServiceCategory::where('parent_id', $companyCat->id)->orderBy('name')->get();
+            foreach ($methodCats as $mc) {
+                $subSvcs = \App\Models\Service::where('category', $mc->id)->get(['id', 'description', 'cost', 'vender', 'departure_location', 'arrival_destination', 'length_time', 'distance_km', 'transport_method']);
+                $methodsList[] = ['id' => $mc->id, 'name' => $mc->name, 'services' => $subSvcs->values()->toArray()];
+            }
+            // Key = category ID (string) — always available, never null
+            $companyMethodData[strval($companyCat->id)] = [
+                'catId'          => $companyCat->id,
+                'vendorId'       => '',
+                'name'           => $companyCat->name,
+                'methods'        => $methodsList,
+                'directServices' => $directSvcs->values()->toArray()
+            ];
+        }
+        $companyMethodDataJson = json_encode($companyMethodData);
+
+        $html .= '<div style="margin-left:auto;display:flex;gap:16px;align-items:center;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:6px 14px;font-size:12px;width:75%;">';
+        $html .= '<div style="flex:1;"><label style="font-size:10px;font-weight:700;color:#555;margin-bottom:2px;display:block">Select Vendor</label><select id="edit_modal_vender_select" name="category" onchange="if(typeof processTransEditChange === \'function\') processTransEditChange(this.value);" style="width:100%;height:30px;border:1px solid #ddd;border-radius:4px;outline:none;">' . $venderOpts . '</select></div>';
+        $html .= '<span style="color:#ccc;">|</span>';
+        $html .= '<span style="white-space:nowrap;"><strong>Vendor Price:</strong> <span style="color:#ea580c;font-weight:700;"><input type="number" name="cost" value="' . ($service->cost ?? 0) . '" step="0.01" style="width:70px;height:24px;border:1px solid #ddd;border-radius:4px;padding:2px 6px;outline:none;"> JOD</span></span>';
+        $html .= '</div>';
         $html .= '</div>';
 
-        // Two-column: Method of transport + Place of interest
-        $html .= '<div style="display:flex;gap:24px;margin-bottom:20px;">';
-
-        // LEFT: Method of transport
-        $methods = [
-            ['key' => 'Bus', 'icon' => 'fa-bus'],
-            ['key' => 'Airplane', 'icon' => 'fa-plane'],
-            ['key' => 'Car', 'icon' => 'fa-car'],
-            ['key' => 'Boat', 'icon' => 'fa-ship'],
-            ['key' => 'Train', 'icon' => 'fa-train'],
-        ];
-        $html .= '<div style="flex:1;">';
-        $html .= '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;">Method of transport</div>';
-        $html .= '<div style="display:flex;gap:8px;">';
-        foreach ($methods as $m) {
-            $isActive = ($method === $m['key']);
-            $bdr = $isActive ? '2px solid #ea580c' : '1px solid #ddd';
-            $bgc = $isActive ? '#ffedd5' : '#fff';
-            $clr = $isActive ? '#ea580c' : '#888';
-            $html .= '<label style="display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:10px 12px;border-radius:8px;border:' . $bdr . ';background:' . $bgc . ';min-width:55px;">';
-            $html .= '<input type="radio" name="transport_method" value="' . $m['key'] . '"' . ($isActive ? ' checked' : '') . ' style="display:none" onchange="selectTransMethod(this)">';
-            $html .= '<i class="fa ' . $m['icon'] . '" style="font-size:22px;color:' . $clr . '"></i>';
-            $html .= '<span style="font-size:10px;font-weight:600;color:' . $clr . '">' . $m['key'] . '</span>';
-            $html .= '</label>';
+        // Photos section
+        $existingImages = [];
+        if ($imgPath) {
+            $d = @unserialize($imgPath);
+            if ($d === false && $imgPath !== 'b:0;') $d = @json_decode($imgPath, true);
+            if (is_array($d)) { foreach ($d as $p) { if (trim($p) !== '') $existingImages[] = $p; } }
+            else { if (trim($imgPath) !== '') $existingImages[] = $imgPath; }
         }
+
+        $html .= '<div style="margin-bottom:16px;">';
+        $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+        $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
+        $html .= '<a href="#" onclick="return false;" style="font-size:11px;font-weight:700;color:#ea580c;text-decoration:none;">How to choose the right photos?</a>';
+        $html .= '</div>';
+        $html .= '<input type="file" name="new_images[]" id="editTransImageInput" accept="image/*" multiple style="display:none" onchange="addTransImages(this)">';
+        $html .= '<div id="transPhotosRow" style="border:1px dashed #ccc;border-radius:4px;min-height:120px;display:flex;overflow-x:auto;gap:8px;padding:8px;align-items:center;">';
+        foreach ($existingImages as $idx => $img) {
+            $imgUrl = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
+            $imgUrl = str_replace('/public/', '/', $imgUrl);
+            $html .= '<div class="trans-photo-wrap" style="position:relative;flex-shrink:0;height:104px;min-width:104px;background:#f1f5f9;border-radius:4px;">';
+            $html .= '<img src="' . $imgUrl . '" style="width:100%;height:100%;border-radius:4px;object-fit:cover;" onerror="this.onerror=null; this.src=\'https://via.placeholder.com/104?text=Photo\';">';
+            $html .= '<input type="hidden" name="existing_images[]" value="' . htmlspecialchars($img) . '">';
+            $html .= '<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
+            $html .= '</div>';
+        }
+        $html .= '<div onclick="document.getElementById(\'editTransImageInput\').click()" style="flex-shrink:0;width:100px;height:104px;border:2px dashed #ccc;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:28px;">+</div>';
         $html .= '</div></div>';
 
-        // RIGHT: Place of interest
-        $html .= '<div style="flex:1;">';
-        $html .= '<div style="font-size:12px;font-weight:700;color:#555;margin-bottom:10px;">Place of interest</div>';
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 12px 0;">';
-        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Departure location</legend>';
-        $html .= '<input type="text" name="departure_location" style="width:100%;height:36px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $depLoc . '">';
-        $html .= '</fieldset>';
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;">';
-        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Arrival destination</legend>';
-        $html .= '<input type="text" name="arrival_destination" style="width:100%;height:36px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $arrDest . '">';
-        $html .= '</fieldset>';
-        $html .= '</div>';
-
-        $html .= '</div>';
-
-        // Transport title
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 4px 0;position:relative;">';
-        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Transport title</legend>';
-        $html .= '<input type="text" name="description" required maxlength="255" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '" oninput="document.getElementById(\'transTitleCount\').textContent=\'(\'+this.value.length+\'/255)\'">';
-        $html .= '<div id="transTitleCount" style="position:absolute;right:4px;bottom:-16px;font-size:10px;color:#bbb;">(' . strlen($service->description ?? '') . '/255)</div>';
+        // Layout
+        $html .= '<div style="margin-bottom:16px;">';
+        $html .= '<div>';
+        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;position:relative;">';
+        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Transport Title</legend>';
+        $html .= '<input type="text" name="description" required style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '" oninput="document.getElementById(\'transTitleCount\').textContent=\'(\'+this.value.length+\'/255)\'">';
+        $html .= '<div id="transTitleCount" style="position:absolute;right:0;bottom:-18px;font-size:10px;color:#bbb;">(' . strlen($desc) . '/255)</div>';
         $html .= '</fieldset>';
 
-        // Length + Distance side by side
-        $html .= '<div style="display:flex;gap:16px;margin:16px 0;">';
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;flex:1;">';
-        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Length</legend>';
-        $html .= '<input type="text" name="length_time" placeholder="00:00" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $lengthTime . '">';
-        $html .= '</fieldset>';
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;flex:1;">';
-        $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Distance (km)</legend>';
-        $html .= '<input type="text" name="distance_km" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $distKm . '">';
-        $html .= '</fieldset>';
-        $html .= '</div>';
-
-        // Description
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Description</legend>';
-        $html .= '<textarea name="notes" style="width:100%;min-height:140px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">' . $notes . '</textarea>';
+        $html .= '<div id="transQuillEditor" style="min-height:140px;background:#fff;font-size:13px;line-height:1.6;"></div>';
+        $html .= '<textarea name="notes" id="transQuillHidden" style="display:none">' . $notes . '</textarea>';
         $html .= '</fieldset>';
+        // Hidden fields column for JS
+        $html .= '<div style="display:none;">';
+        // The top form should not have departure, arrival, length, distance or method fields visually.
+        // We keep a hidden select for JS logic to populate the row edit options.
+        $html .= '<div style="display:none;">';
+        $html .= '<select id="editTransMethodSelect" name="transport_method">';
+        if ($companyCatId == 0 && $service->category) {
+            $svcCat = \App\Models\ServiceCategory::find($service->category);
+            if ($svcCat && $svcCat->parent_id > 0) {
+                $companyCatId = $svcCat->parent_id;
+            } elseif ($svcCat && $svcCat->parent_id == 0) {
+                $companyCatId = $svcCat->id;
+            }
+        }
+        $currentCompanyChildCats = ($companyCatId > 0)
+            ? \App\Models\ServiceCategory::where('parent_id', $companyCatId)->get()
+            : collect();
+        if ($currentCompanyChildCats->isNotEmpty()) {
+            $html .= '<option value="">Select method...</option>';
+            foreach ($currentCompanyChildCats as $childCat) {
+                $sel = ($service->category == $childCat->id) ? ' selected' : '';
+                $html .= '<option value="' . $childCat->id . '"' . $sel . '>' . htmlspecialchars($childCat->name) . '</option>';
+            }
+        } else {
+            $html .= '<option value="">Select method...</option>';
+        }
+        $html .= '</select>';
+        $html .= '</div>';
 
-        $html .= '<input type="hidden" name="cost" value="' . $service->cost . '">';
-        $html .= '<input type="hidden" name="category" value="' . $service->category . '">';
+        $html .= '</div>';
+
+        $html .= '<input type="hidden" name="category" value="' . ($service->category ?? '') . '">';
         $html .= '</form>';
+
+        // Add Sub Service Form
+        $transCsrf = csrf_token();
+        $html .= '<div style="margin-top:20px;">';
+        $html .= '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+        $html .= '<span style="color:#10b981;font-size:11px;font-weight:800;letter-spacing:1px;">🚗 SUB-SERVICES LIST</span>';
+        $html .= '<button type="button" onclick="toggleTransSubAddForm()" style="background:#10b981;border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;"><i class="fa fa-plus"></i> Add Service Row</button>';
+        $html .= '</div>';
+        $html .= '<div id="transSubAddSvcForm" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;">';
+        $html .= '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        $html .= '<div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="newTsDesc" placeholder="e.g. Airport Transfer" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="flex:1;min-width:140px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Method</label><select id="newTsMethod" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 8px;font-size:12px;"></select></div>';
+        $html .= '<div style="flex:1;min-width:130px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Departure</label><input type="text" id="newTsDep" autocomplete="off" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;" oninput="if(typeof transPlaceAutocomplete!==\'undefined\') transPlaceAutocomplete(this.value, \'newTsDep_dd\', \'newTsDep\')"><div id="newTsDep_dd" style="display:none;position:absolute;z-index:9999;background:#fff;border:1px solid #e2e8f0;max-height:150px;overflow-y:auto;border-radius:4px;"></div></div>';
+        $html .= '<div style="flex:1;min-width:130px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Arrival</label><input type="text" id="newTsArr" autocomplete="off" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;" oninput="if(typeof transPlaceAutocomplete!==\'undefined\') transPlaceAutocomplete(this.value, \'newTsArr_dd\', \'newTsArr\')"><div id="newTsArr_dd" style="display:none;position:absolute;z-index:9999;background:#fff;border:1px solid #e2e8f0;max-height:150px;overflow-y:auto;border-radius:4px;"></div></div>';
+        $html .= '<div style="flex:1;min-width:80px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Length</label><input type="text" id="newTsLen" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="flex:1;min-width:80px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Dist(km)</label><input type="text" id="newTsDist" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="flex:1;min-width:90px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="newTsCost" step="0.01" value="0.00" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="display:flex;gap:6px;">';
+        $html .= '<button type="button" onclick="quickAddTransSub(' . ($service->country ?? 123) . ',\'' . $transCsrf . '\')" style="height:34px;background:#10b981;border:none;color:#fff;border-radius:6px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;">Save</button>';
+        $html .= '<button type="button" onclick="toggleTransSubAddForm()" style="height:34px;background:#f1f5f9;border:none;color:#64748b;border-radius:6px;padding:0 12px;font-size:12px;cursor:pointer;">Cancel</button>';
+        $html .= '</div></div></div>';
+        $html .= '</div>';
+
+        // Services list container (loads on vendor select change)
+        $html .= '<div id="transServicesContainer" style="margin-top:0px;"></div>';
+
+        $html .= '<script>
+        var companyMethodData = ' . $companyMethodDataJson . ';
+
+
+        window.transEditRowId = null;
+        function renderTransSvcTable(services) {
+            window.currentTransServices = services;
+            var con = document.getElementById("transServicesContainer");
+            if (!con) return;
+            if (!services || services.length === 0) {
+                con.innerHTML = "<div style=\"font-size:12px;color:#718096;text-align:center;padding:10px;border-radius:6px;background:#f8fafc\">No services found.</div>";
+                return;
+            }
+            var th = "text-align:left;padding:5px 6px;font-size:10px;font-weight:700;color:#718096;white-space:nowrap;";
+            var thR = "text-align:right;padding:5px 6px;font-size:10px;font-weight:700;color:#718096;white-space:nowrap;";
+            var tbl = "<div style=\"margin-top:6px;overflow-x:auto;\"><table style=\"width:100%;border-collapse:collapse;font-size:11px;\">"
+                + "<thead><tr style=\"border-bottom:1px solid #e2e8f0;background:#f8fafc;\">"
+                + "<th style=\"" + th + "\">DESCRIPTION</th>"
+                + "<th style=\"" + th + "\">Method of transport</th>"
+                + "<th style=\"" + th + "\">Departure location</th>"
+                + "<th style=\"" + th + "\">Arrival location</th>"
+                + "<th style=\"" + th + "\">Length</th>"
+                + "<th style=\"" + th + "\">Distance km</th>"
+                + "<th style=\"" + thR + "\">COST</th>"
+                + "<th style=\"" + thR + "\">ACTIONS</th>"
+                + "</tr></thead><tbody>";
+            services.forEach(function(s) {
+                var td = "padding:5px 6px;border-bottom:1px solid #f0f0f0;";
+                if (window.transEditRowId === s.id) {
+                    var inpStyle = "width:100%;border:1px solid #cbd5e1;border-radius:4px;padding:4px;font-size:11px;outline:none;";
+
+                    var curVal = String(s.transport_method || "");
+                    var methodSelectHTML = "<select id=\"ts_meth_" + s.id + "\" style=\"" + inpStyle + "\">";
+                    var topSel = document.getElementById("editTransMethodSelect");
+                    if (topSel) {
+                        for (var i = 0; i < topSel.options.length; i++) {
+                            var opt = topSel.options[i];
+                            if (!opt.text) continue;
+                            if (opt.text.toLowerCase().indexOf("select method") > -1 && i === 0) continue; // Skip placeholder
+                            var isSelected = (curVal == opt.text || curVal == opt.value) ? " selected" : "";
+                            methodSelectHTML += "<option value=\"" + opt.text.replace(/\"/g, "&quot;") + "\"" + isSelected + ">" + opt.text + "</option>";
+                        }
+                    } else {
+                        methodSelectHTML += "<option value=\"" + curVal.replace(/\"/g, "&quot;") + "\">" + curVal + "</option>";
+                    }
+                    methodSelectHTML += "</select>";
+
+                    var tdDepArr = "padding:5px 6px;border-bottom:1px solid #f0f0f0;position:relative;";
+                    tbl += "<tr>"
+                        + "<td style=\"" + td + "\"><input type=\"text\" id=\"ts_desc_" + s.id + "\" value=\"" + String(s.description || "").replace(/\'/g, "&apos;").replace(/\"/g, "&quot;") + "\" style=\"" + inpStyle + "\"></td>"
+                        + "<td style=\"" + td + "\">" + methodSelectHTML + "</td>"
+                        + "<td style=\"" + tdDepArr + "\"><input autocomplete=\"off\" type=\"text\" id=\"ts_dep_" + s.id + "\" value=\"" + String(s.departure_location || "").replace(/\'/g, "&apos;").replace(/\"/g, "&quot;") + "\" style=\"" + inpStyle + "\" oninput=\"if(typeof transPlaceAutocomplete !== \'undefined\') transPlaceAutocomplete(this.value, \'ts_dep_dd_" + s.id + "\', \'ts_dep_" + s.id + "\')\"><div id=\"ts_dep_dd_" + s.id + "\" style=\"display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.15);max-height:220px;overflow-y:auto;text-align:left;\"></div></td>"
+                        + "<td style=\"" + tdDepArr + "\"><input autocomplete=\"off\" type=\"text\" id=\"ts_arr_" + s.id + "\" value=\"" + String(s.arrival_destination || "").replace(/\'/g, "&apos;").replace(/\"/g, "&quot;") + "\" style=\"" + inpStyle + "\" oninput=\"if(typeof transPlaceAutocomplete !== \'undefined\') transPlaceAutocomplete(this.value, \'ts_arr_dd_" + s.id + "\', \'ts_arr_" + s.id + "\')\"><div id=\"ts_arr_dd_" + s.id + "\" style=\"display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.15);max-height:220px;overflow-y:auto;text-align:left;\"></div></td>"
+                        + "<td style=\"" + td + "\"><input type=\"text\" id=\"ts_len_" + s.id + "\" value=\"" + String(s.length_time || "").replace(/\'/g, "&apos;").replace(/\"/g, "&quot;") + "\" style=\"" + inpStyle + "\"></td>"
+                        + "<td style=\"" + td + "\"><input type=\"text\" id=\"ts_dist_" + s.id + "\" value=\"" + String(s.distance_km || "").replace(/\'/g, "&apos;").replace(/\"/g, "&quot;") + "\" style=\"" + inpStyle + "\"></td>"
+                        + "<td style=\"" + td + "\"><input type=\"number\" step=\"0.01\" id=\"ts_cost_" + s.id + "\" value=\"" + (s.cost || 0) + "\" style=\"" + inpStyle + "text-align:right;\"></td>"
+                        + "<td style=\"" + td + "text-align:right;white-space:nowrap;\">"
+                        + "<a href=\"javascript:void(0)\" onclick=\"saveTransSubSvc(" + s.id + ")\" style=\"margin-right:12px;color:#10b981;text-decoration:none;font-weight:700;\"><i class=\"fa fa-save\"></i> Save</a>"
+                        + "<a href=\"javascript:void(0)\" onclick=\"cancelTransEdit()\" style=\"color:#64748b;text-decoration:none;font-weight:600;\"><i class=\"fa fa-times\"></i> Cancel</a>"
+                        + "</td>"
+                        + "</tr>";
+                } else {
+                    tbl += "<tr>"
+                        + "<td style=\"" + td + "\">" + (s.description || "-") + "</td>"
+                        + "<td style=\"" + td + "\">" + (s.transport_method || "-") + "</td>"
+                        + "<td style=\"" + td + "\">" + (s.departure_location || "-") + "</td>"
+                        + "<td style=\"" + td + "\">" + (s.arrival_destination || "-") + "</td>"
+                        + "<td style=\"" + td + "\">" + (s.length_time || "-") + "</td>"
+                        + "<td style=\"" + td + "\">" + (s.distance_km || "-") + "</td>"
+                        + "<td style=\"" + td + "text-align:right;color:#ea580c;font-weight:700;\">" + parseFloat(s.cost || 0).toFixed(2) + " JOD</td>"
+                        + "<td style=\"" + td + "text-align:right;white-space:nowrap;\">"
+                        + "<a href=\"javascript:void(0)\" onclick=\"editTransSubSvc(" + s.id + ")\" style=\"margin-right:12px;color:#3b82f6;text-decoration:none;\"><i class=\"fa fa-pencil\"></i> Edit</a>"
+                        + "<a href=\"javascript:void(0)\" onclick=\"delTransSubSvc(" + s.id + ")\" style=\"color:#ef4444;text-decoration:none;\"><i class=\"fa fa-trash\"></i> Delete</a>"
+                        + "</td>"
+                        + "</tr>";
+                }
+            });
+            tbl += "</tbody></table></div>";
+            con.innerHTML = tbl;
+        }
+
+        window.editTransSubSvc = function(id) {
+            window.transEditRowId = id;
+            renderTransSvcTable(window.currentTransServices);
+            var s = window.currentTransServices.find(function(x) { return x.id == id; });
+            if (!s) return;
+            var depInp = document.getElementById("editTransDepInp");
+            if (depInp) depInp.value = s.departure_location || "";
+            var arrInp = document.getElementById("editTransArrInp");
+            if (arrInp) arrInp.value = s.arrival_destination || "";
+            var lenInp = document.getElementById("editTransLenInp");
+            if (lenInp) lenInp.value = s.length_time || "";
+            var distInp = document.getElementById("editTransDistInp");
+            if (distInp) distInp.value = s.distance_km || "";
+        };
+
+        window.cancelTransEdit = function() {
+            window.transEditRowId = null;
+            renderTransSvcTable(window.currentTransServices);
+        };
+
+        window.saveTransSubSvc = function(id) {
+            var s = window.currentTransServices.find(function(x) { return x.id == id; });
+            if (!s) return;
+            var newDesc = document.getElementById("ts_desc_" + id).value;
+            var newMethod = document.getElementById("ts_meth_" + id).value;
+            var depInp = document.getElementById("editTransDepInp");
+            var newDep = depInp ? depInp.value : (document.getElementById("ts_dep_" + id) ? document.getElementById("ts_dep_" + id).value : "");
+            var arrInp = document.getElementById("editTransArrInp");
+            var newArr = arrInp ? arrInp.value : (document.getElementById("ts_arr_" + id) ? document.getElementById("ts_arr_" + id).value : "");
+            var lenInp = document.getElementById("editTransLenInp");
+            var newLen = lenInp ? lenInp.value : (document.getElementById("ts_len_" + id) ? document.getElementById("ts_len_" + id).value : "");
+            var distInp = document.getElementById("editTransDistInp");
+            var newDist = distInp ? distInp.value : (document.getElementById("ts_dist_" + id) ? document.getElementById("ts_dist_" + id).value : "");
+            var newCost = document.getElementById("ts_cost_" + id).value;
+
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: {
+                    _method: "PUT",
+                    _token: "' . csrf_token() . '",
+                    description: newDesc,
+                    transport_method: newMethod,
+                    departure_location: newDep,
+                    arrival_destination: newArr,
+                    length_time: newLen,
+                    distance_km: newDist,
+                    cost: parseFloat(newCost) || 0,
+                    service_type: "basic"
+                },
+                success: function() {
+                    s.description = newDesc;
+                    s.transport_method = newMethod;
+                    s.departure_location = newDep;
+                    s.arrival_destination = newArr;
+                    s.length_time = newLen;
+                    s.distance_km = newDist;
+                    s.cost = parseFloat(newCost) || 0;
+                    window.transEditRowId = null;
+                    renderTransSvcTable(window.currentTransServices);
+                    if(typeof showToast === "function") showToast("Updated successfully", "success");
+                    else alert("Updated successfully");
+                },
+                error: function(x) {
+                    var msg = "Error updating service";
+                    if (x.responseJSON && x.responseJSON.message) msg = x.responseJSON.message;
+                    alert(msg);
+                }
+            });
+        };
+
+        window.delTransSubSvc = function(id) {
+            if(!confirm("Are you sure you want to delete this service?")) return;
+            $.ajax({
+                url: "/admin/services/" + id,
+                type: "POST",
+                data: {
+                    _method: "DELETE",
+                    _token: "' . csrf_token() . '",
+                    service_type: "service"
+                },
+                success: function() {
+                    window.currentTransServices = window.currentTransServices.filter(function(x) { return x.id != id; });
+                    renderTransSvcTable(window.currentTransServices);
+                    if(typeof showToast === "function") showToast("Deleted successfully", "success");
+                    else alert("Deleted successfully");
+                },
+                error: function(x) {
+                    alert("Error deleting service");
+                }
+            });
+        };
+
+        function updateTransMethodDropdown(vendorKey, selectedMethodId) {
+            var company = companyMethodData[vendorKey];
+            var sel = document.getElementById("editTransMethodSelect");
+            if (!sel) return;
+            sel.innerHTML = "";
+            if (!company || !company.methods || company.methods.length === 0) {
+                sel.innerHTML = "<option value=\'\'>No sub-methods available</option>";
+                if (company && company.directServices) renderTransSvcTable(company.directServices);
+                return;
+            }
+            sel.innerHTML = "<option value=\'\'>Select method...</option>";
+            var firstSvcs = null;
+            company.methods.forEach(function(m, idx) {
+                var opt = document.createElement("option");
+                opt.value = m.id;
+                opt.text = m.name;
+                if (selectedMethodId && m.id == selectedMethodId) { opt.selected = true; firstSvcs = m.services; }
+                else if (!selectedMethodId && idx === 0) { firstSvcs = m.services; }
+                sel.appendChild(opt);
+            });
+            if (firstSvcs) renderTransSvcTable(firstSvcs);
+        }
+
+        window.toggleTransSubAddForm = function() {
+            var f = document.getElementById("transSubAddSvcForm");
+            if(f) f.style.display = (f.style.display === "none" ? "block" : "none");
+            if(f && f.style.display !== "none") {
+                // Populate method dropdown from the top method dropdown
+                var mSel = document.getElementById("newTsMethod");
+                if (mSel) {
+                    mSel.innerHTML = "";
+                    var methodOpts = ["Car with driver","Van with driver","Bus with driver","Car","Van","Bus","Airplane","Boat","Train"];
+                    for(var i=0; i<methodOpts.length; i++) {
+                        mSel.add(new Option(methodOpts[i], methodOpts[i]));
+                    }
+                }
+            }
+        };
+
+        window.quickAddTransSub = function(country, token) {
+            var desc = document.getElementById("newTsDesc").value.trim();
+            var methSel = document.getElementById("newTsMethod");
+            var methName = methSel && methSel.selectedIndex >= 0 ? methSel.value : "";
+            var dep = document.getElementById("newTsDep").value.trim();
+            var arr = document.getElementById("newTsArr").value.trim();
+            var len = document.getElementById("newTsLen").value.trim();
+            var dist = document.getElementById("newTsDist").value.trim();
+            var cost = document.getElementById("newTsCost").value.trim() || 0;
+
+            if(!desc) { alert("Please enter a description."); return; }
+            var catId = "";
+            var vendDD = document.getElementById("edit_modal_vender_select");
+            if (vendDD && vendDD.selectedIndex >= 0) {
+               catId = vendDD.options[vendDD.selectedIndex].getAttribute("data-catid");
+            }
+            if(!catId) { alert("Please select a transport company."); return; }
+
+            $.ajax({
+                url: "/admin/services/quick-add",
+                type: "POST",
+                data: {
+                    _token: token,
+                    description: desc,
+                    cost: cost,
+                    category: catId,
+                    country: country,
+                    transport_method: methName,
+                    departure_location: dep,
+                    arrival_destination: arr,
+                    length_time: len,
+                    distance_km: dist
+                },
+                success: function(resp) {
+                    if (resp.success) {
+                        var newObj = {
+                            id: resp.id,
+                            description: desc,
+                            transport_method: methName,
+                            departure_location: dep,
+                            arrival_destination: arr,
+                            length_time: len,
+                            distance_km: dist,
+                            cost: parseFloat(cost)
+                        };
+                        if (!window.currentTransServices) { window.currentTransServices = []; }
+                        window.currentTransServices.unshift(newObj);
+                        renderTransSvcTable(window.currentTransServices);
+                        document.getElementById("newTsDesc").value = "";
+                        document.getElementById("newTsDep").value = "";
+                        document.getElementById("newTsArr").value = "";
+                        document.getElementById("newTsLen").value = "";
+                        document.getElementById("newTsDist").value = "";
+                        document.getElementById("newTsCost").value = "0.00";
+                        toggleTransSubAddForm();
+
+                        var vendorId = null;
+                        var vendDD = document.getElementById("edit_modal_vender_select");
+                        if (vendDD && vendDD.options[vendDD.selectedIndex]) {
+                            vendorId = vendDD.options[vendDD.selectedIndex].getAttribute("data-catid");
+                        }
+
+                        if (vendorId && companyMethodData[String(vendorId)]) {
+                            var methodsArr = companyMethodData[String(vendorId)].methods;
+                            var f = methodsArr ? methodsArr.find(function(m){ return String(m.id) === String(catId); }) : null;
+                            if (f) {
+                                f.services.unshift(newObj);
+                            } else {
+                                companyMethodData[String(vendorId)].directServices.unshift(newObj);
+                            }
+                        }
+
+                        if(typeof showToast === "function") showToast("Service added!", "success");
+                    }
+                },
+                error: function(x) {
+                    var msg = "Error adding service";
+                    if (x.responseJSON && x.responseJSON.message) msg = x.responseJSON.message;
+                    if(typeof showToast === "function") showToast(msg, "error"); else alert(msg);
+                }
+            });
+        };
+
+        setTimeout(function(){
+            var ssMethod = null;
+
+            // Helper: get selected vendor option data-catid
+            window.getVendorCatId = function() {
+                var sel = document.getElementById("edit_modal_vender_select");
+                if (!sel) return null;
+                var opt = sel.options[sel.selectedIndex];
+                return opt ? (opt.getAttribute("data-catid") || "") : "";
+            };
+
+            function rebuildMethodDropdown(catId, selectedMethodId) {
+                var company = companyMethodData[String(catId)];
+                var allSvcs = [];
+                var nativeOpts = "";
+
+                if (company && company.methods && company.methods.length > 0) {
+                    nativeOpts = "<option value=\"\">Select method...</option>";
+                    company.methods.forEach(function(m, idx) {
+                        var isSel = (selectedMethodId && String(m.id) === String(selectedMethodId));
+                        nativeOpts += "<option value=\"" + m.id + "\"" + (isSel ? " selected" : "") + ">" + m.name + "</option>";
+                        if (m.services) allSvcs = allSvcs.concat(m.services);
+                    });
+                    if (company.directServices && company.directServices.length > 0) {
+                        allSvcs = allSvcs.concat(company.directServices);
+                    }
+                } else {
+                    nativeOpts = "<option value=\"\">Select method...</option>";
+                    if (company && company.directServices) allSvcs = company.directServices;
+                }
+
+                var sel = document.getElementById("editTransMethodSelect");
+                if (sel) sel.innerHTML = nativeOpts;
+
+                if (typeof SlimSelect !== "undefined") {
+                    try { if (ssMethod && ssMethod.slim) ssMethod.destroy(); } catch(ex) {}
+                    try {
+                        ssMethod = new SlimSelect({
+                            select: "#editTransMethodSelect",
+                            showSearch: false,
+                            onChange: function(info) {
+                                var methodId = info && info.value ? info.value : (Array.isArray(info) && info[0] ? info[0].value : null);
+                                if (!methodId) return;
+                                var cId = getVendorCatId();
+                                var comp = cId ? companyMethodData[String(cId)] : null;
+                                if (comp && comp.methods) {
+                                    var f = comp.methods.find(function(m) { return String(m.id) === String(methodId); });
+                                    if (f) renderTransSvcTable(f.services);
+                                }
+                            }
+                        });
+                    } catch(ex) {}
+                }
+                if (allSvcs.length > 0) renderTransSvcTable(allSvcs);
+                else renderTransSvcTable([]);
+            }
+
+            window.processTransEditChange = function(val) {
+                // Auto-populate Transport Title (description)
+                var selEl = document.getElementById("edit_modal_vender_select");
+                if (selEl && selEl.options[selEl.selectedIndex]) {
+                    var vName = selEl.options[selEl.selectedIndex].text;
+                    var formNode = document.getElementById("editTransForm");
+                    var descInp = null;
+                    if (formNode) {
+                        descInp = formNode.querySelector("input[name=\'description\']");
+                    }
+                    if (!descInp) {
+                         descInp = document.querySelector("#catModalBody input[name=\'description\']");
+                    }
+                    if (!descInp) {
+                         descInp = document.querySelector("input[name=\'description\']");
+                    }
+                    if (descInp && vName && vName !== "Select a vendor...") {
+                        descInp.value = vName;
+                        // Update character count if the counter script exists
+                        var countEl = document.getElementById("transTitleCount");
+                        if(countEl) countEl.textContent = "(" + vName.length + "/255)";
+                    }
+                }
+
+                // Use data-catid — not vendor ID — for companyMethodData lookup
+                setTimeout(function() {
+                    var cId = getVendorCatId();
+                    if (cId) rebuildMethodDropdown(cId, null);
+                    else { var c = document.getElementById("transServicesContainer"); if(c) c.innerHTML = ""; }
+                }, 10);
+            };
+
+            if(typeof SlimSelect !== "undefined"){
+                try{
+                    ssMethod = new SlimSelect({
+                        select: "#editTransMethodSelect",
+                        showSearch: false,
+                        onChange: function(info){
+                            var methodId = info && info.value ? info.value : (Array.isArray(info) && info[0] ? info[0].value : null);
+                            if (!methodId) return;
+                            var cId = getVendorCatId();
+                            var comp = cId ? companyMethodData[String(cId)] : null;
+                            if (comp && comp.methods) {
+                                var found = comp.methods.find(function(m){ return String(m.id) === String(methodId); });
+                                if (found) renderTransSvcTable(found.services);
+                            }
+                        }
+                    });
+                }catch(e){}
+            }
+            if(typeof Quill !== "undefined") {
+                var q = new Quill("#transQuillEditor", {theme: "snow"});
+                q.root.innerHTML = document.getElementById("transQuillHidden").value;
+                q.on("text-change", function() {
+                    document.getElementById("transQuillHidden").value = q.root.innerHTML;
+                });
+            }
+            // On modal open: load services for pre-selected company + method
+            var initCatId = getVendorCatId();
+            var initMethodEl = document.getElementById("editTransMethodSelect");
+            var initMethodId = initMethodEl ? initMethodEl.value : null;
+            if (initCatId) {
+                rebuildMethodDropdown(initCatId, initMethodId || null);
+            }
+        }, 200);
+        </script>';
 
         return response()->json(['html' => $html]);
     }
 
     private function editActivityModal($service)
     {
-        $flags = [['emoji'=>'🇫🇷','code'=>'fr'],['emoji'=>'🇬🇧','code'=>'en'],['emoji'=>'🇮🇹','code'=>'it'],['emoji'=>'🇪🇸','code'=>'es'],['emoji'=>'🇩🇪','code'=>'de'],['emoji'=>'🇸🇪','code'=>'se'],['emoji'=>'🇳🇱','code'=>'nl']];
+        $flags = [['emoji' => '🇫🇷', 'code' => 'fr'], ['emoji' => '🇬🇧', 'code' => 'en'], ['emoji' => '🇮🇹', 'code' => 'it'], ['emoji' => '🇪🇸', 'code' => 'es'], ['emoji' => '🇩🇪', 'code' => 'de'], ['emoji' => '🇸🇪', 'code' => 'se'], ['emoji' => '🇳🇱', 'code' => 'nl']];
         $imgPath = $service->image ?? '';
         $desc = htmlspecialchars($service->description ?? '');
         $sid = $service->id;
         $arrival = htmlspecialchars($service->arrival ?? '');
         $notes = htmlspecialchars($service->notes ?? '');
 
-        $html = '<script>document.getElementById("libModalHead").innerHTML=\'<h3>Modify activity</h3><div style="display:flex;gap:10px;align-items:center"><a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a><button form="editActForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button></div>\';</script>';
+        $html = '<script>var hd = document.getElementById("libModalHead") || document.getElementById("catModalHead"); if(hd){hd.innerHTML=\'<h3>Modify activity</h3><div style="display:flex;gap:10px;align-items:center"><a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a><button form="editActForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button></div>\';}</script>';
         $html .= '<form id="editActForm" onsubmit="submitEditActivity(' . $sid . '); return false;" enctype="multipart/form-data">' . csrf_field();
+
+        // ------------------ Select Vendor Dropdown ------------------
+        $html .= '<div style="display:flex;gap:16px;margin-bottom:16px;">';
+        $html .= '<div style="flex:1;"><label style="font-size:13px;font-weight:700;color:#555;margin-bottom:6px;display:block">Select Vendor</label>';
+        $html .= '<select name="vender" id="editActCategorySelect" onchange="if(typeof updateEditActivityServices===\'function\'){updateEditActivityServices(this.value);}" required style="width:100%;height:40px;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-size:13px;outline:none;background:#fff">';
+        $html .= '<option value="">Select a vendor...</option>';
+        $html .= '</select></div></div>';
+        $currentVender = intval($service->vender ?? 0);
+        $html .= '<script>(function(){ var sel=document.getElementById("editActCategorySelect"); if(!sel||typeof actCategoriesData==="undefined") return; actCategoriesData.forEach(function(v){ var o=document.createElement("option"); o.value=v.id; o.textContent=v.name; if(String(v.id)==="' . $currentVender . '") o.selected=true; sel.appendChild(o); }); if(sel.value && typeof updateEditActivityServices==="function") updateEditActivityServices(sel.value); })();</script>';
+        // -------------------------------------------------------------------------
 
         // Flags
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
-        foreach ($flags as $f) { $a=($f['code']==='en'); $html .= '<div style="width:40px;height:32px;border-radius:6px;border:'.($a?'2px solid #ea580c':'2px solid transparent').';background:'.($a?'#ea580c':'transparent').';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">'.$f['emoji'].'</div>'; }
+        foreach ($flags as $f) {
+            $a = ($f['code'] === 'en');
+            $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . ($a ? '2px solid #ea580c' : '2px solid transparent') . ';background:' . ($a ? '#ea580c' : 'transparent') . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
+        }
         $html .= '</div>';
 
         // Photos
-        $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        $existingImages = $this->decodeServiceImages($imgPath);
         $html .= '<div style="margin-bottom:16px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="font-size:11px;font-weight:700;color:#555;">Photos:</span><a href="#" onclick="return false;" style="font-size:11px;font-weight:700;color:#ea580c;text-decoration:none;">How to choose the right photos?</a></div>';
         $html .= '<input type="file" name="new_images[]" id="editActImageInput" accept="image/*" multiple style="display:none" onchange="addActImages(this)">';
         $html .= '<div id="actPhotosRow" style="border:1px dashed #ccc;border-radius:4px;min-height:120px;display:flex;overflow-x:auto;gap:8px;padding:8px;align-items:center;">';
         foreach ($existingImages as $img) {
-            $u = (str_starts_with($img,'http')) ? $img : '/'.ltrim($img,'/');
-            $html .= '<div style="position:relative;flex-shrink:0;height:104px;"><img src="'.$u.'" style="height:100%;border-radius:4px;object-fit:cover;"><input type="hidden" name="existing_images[]" value="'.htmlspecialchars($img).'"><button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button></div>';
+            $u = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
+            $html .= '<div style="position:relative;flex-shrink:0;height:104px;"><img src="' . $u . '" style="height:100%;border-radius:4px;object-fit:cover;"><input type="hidden" name="existing_images[]" value="' . htmlspecialchars($img) . '"><button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button></div>';
         }
         $html .= '<div onclick="document.getElementById(\'editActImageInput\').click()" style="flex-shrink:0;width:100px;height:104px;border:2px dashed #ccc;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:28px;">📷</div>';
         $html .= '</div></div>';
 
         // Activity name + Place of interest
         $html .= '<div style="display:flex;gap:16px;margin-bottom:4px;">';
-        $html .= '<div style="flex:1;"><fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;position:relative;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Activity name</legend><input type="text" name="description" required maxlength="255" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="'.$desc.'" oninput="document.getElementById(\'actNameCount\').textContent=\'(\'+this.value.length+\'/255)\'"><div id="actNameCount" style="position:absolute;right:4px;bottom:-16px;font-size:10px;color:#bbb;">('.strlen($service->description ?? '').'/255)</div></fieldset></div>';
-        $html .= '<div style="flex:1;"><fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;position:relative;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Place of interest</legend><div style="display:flex;align-items:center;padding:0 12px;"><i class="fa fa-map-marker" style="color:#aaa;margin-right:8px;"></i><input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:40px;border:none;outline:none;font-size:13px;background:transparent;" placeholder="Add a destination" value="'.$arrival.'" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)"></div><div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div></fieldset></div>';
+        $html .= '<div style="flex:1;"><fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;position:relative;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Activity name</legend><input type="text" id="editActNameInput" name="description" required maxlength="255" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . $desc . '" oninput="document.getElementById(\'actNameCount\').textContent=\'(\'+this.value.length+\'/255)\'"><div id="actNameCount" style="position:absolute;right:4px;bottom:-16px;font-size:10px;color:#bbb;">(' . strlen($service->description ?? '') . '/255)</div></fieldset></div>';
+        $html .= '<div style="flex:1;"><fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;position:relative;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Place of interest</legend><div style="display:flex;align-items:center;padding:0 12px;"><i class="fa fa-map-marker" style="color:#aaa;margin-right:8px;"></i><input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:40px;border:none;outline:none;font-size:13px;background:transparent;" placeholder="Add a destination" value="' . $arrival . '" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)"></div><div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div></fieldset></div>';
         $html .= '</div>';
 
         // Description
-        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:16px 0 0 0;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Description</legend><textarea name="notes" style="width:100%;min-height:160px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">'.$notes.'</textarea></fieldset>';
-        $html .= '<input type="hidden" name="cost" value="'.$service->cost.'"><input type="hidden" name="category" value="'.$service->category.'">';
+        $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:16px 0 0 0;"><legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;">Description</legend><textarea name="notes" style="width:100%;min-height:160px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">' . $notes . '</textarea></fieldset>';
+        $html .= '<input type="hidden" name="cost" value="' . $service->cost . '">';
         $html .= '</form>';
 
-        // ACTIVITIES LIST at bottom — filtered by same vendor as this accommodation
-        $catId = $service->category;
-        $activityQuery = Activity::where('category', $catId)->with('venderUser')->orderByDesc('id');
-        if ($service->vender) {
-            $activityQuery->where('vender', $service->vender);
-        }
-        $activityItems = $activityQuery->get();
-        if ($activityItems->count() > 0) {
-            $html .= '<div style="margin-top:24px;border-top:2px solid #eee;padding-top:16px;">';
-            $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">';
-            $html .= '<span style="font-size:10px;font-weight:800;color:#dc2626;letter-spacing:1px;">🏃 ACTIVITIES LIST</span>';
-            $html .= '</div>';
-            $html .= '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
-            $html .= '<thead><tr style="border-bottom:1px solid #eee;">';
-            $html .= '<th style="text-align:left;padding:8px 6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">DESCRIPTION</th>';
-            $html .= '<th style="text-align:left;padding:8px 6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">COST</th>';
-            $html .= '<th style="text-align:left;padding:8px 6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">VENDOR</th>';
-            $html .= '</tr></thead><tbody>';
-            foreach ($activityItems as $act) {
-                $vendorName = '-';
-                if ($act->venderUser) {
-                    $vendorName = !empty($act->venderUser->company)
-                        ? strtoupper($act->venderUser->company)
-                        : strtoupper($act->venderUser->first_name . ' ' . $act->venderUser->last_name);
-                }
-                $actDesc = htmlspecialchars($act->description ?? '-');
-                $actCost = number_format($act->cost ?? 0, 2);
-                $html .= '<tr style="border-bottom:1px solid #f5f5f5;">';
-                $html .= '<td style="padding:10px 6px;color:#1e293b;font-weight:600;">' . $actDesc . '</td>';
-                $html .= '<td style="padding:10px 6px;font-weight:700;color:#ea580c;white-space:nowrap;">' . $actCost . ' JOD</td>';
-                $html .= '<td style="padding:10px 6px;color:#1e293b;">' . $vendorName . '</td>';
-                $html .= '</tr>';
-            }
-            $html .= '</tbody></table></div>';
-        }
+        $html .= '<div style="margin-top:24px;border-top:2px solid #eee;padding-top:16px;">';
+        $html .= '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">';
+        $html .= '<span style="font-size:10px;font-weight:800;color:#dc2626;letter-spacing:1px;">?? ACTIVITIES SERVICES LIST</span>';
+        $html .= '<button type="button" onclick="toggleActSubAddForm()" style="background:#ea580c;border:none;color:#fff;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer"><i class="fa fa-plus"></i> Add Service Row</button>';
+        $html .= '</div>';
+
+        $actCsrf = csrf_token();
+        $html .= '<div id="actSubAddSvcForm" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px;">';
+        $html .= '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">';
+        $html .= '<div style="flex:2;min-width:160px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Description</label><input type="text" id="newActDescEdit" placeholder="e.g. Local Guide" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="flex:1;min-width:90px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Cost (JOD)</label><input type="number" id="newActCostEdit" step="0.01" value="0.00" style="width:100%;height:34px;border:1px solid #e2e8f0;border-radius:6px;padding:0 10px;font-size:12px;"></div>';
+        $html .= '<div style="display:flex;gap:6px;">';
+        $html .= '<button type="button" onclick="quickAddActSubEdit(' . ($service->category ?? 0) . ',\'' . $actCsrf . '\', ' . ($service->country ?? 123) . ', ' . ($service->vender ?? 0) . ')" style="height:34px;background:#ea580c;border:none;color:#fff;border-radius:6px;padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;">Save</button>';
+        $html .= '<button type="button" onclick="toggleActSubAddForm()" style="height:34px;background:#f1f5f9;border:none;color:#64748b;border-radius:6px;padding:0 12px;font-size:12px;cursor:pointer;">Cancel</button>';
+        $html .= '</div></div></div>';
+        $html .= '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        $html .= '<thead><tr style="border-bottom:1px solid #eee;">';
+        $html .= '<th style="text-align:left;padding:8px 6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">DESCRIPTION</th>';
+        $html .= '<th style="text-align:left;padding:8px 6px;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">COST</th>';
+        $html .= '</tr></thead><tbody id="editActServicesTbody">';
+        $html .= '</tbody></table></div>';
+        $html .= '<script>setTimeout(function(){ if(typeof updateEditActivityServices === "function"){ var el = document.getElementById("editActCategorySelect"); if(el) updateEditActivityServices(el.value); } }, 100);</script>';
 
         return response()->json(['html' => $html]);
     }
@@ -2000,13 +3364,13 @@ private function editTransportModal($service)
             ['emoji' => '🇳🇱', 'code' => 'nl'],
         ];
 
-        $sid       = $service->id;
+        $sid = $service->id;
         $countryId = $service->country ?? 0;
-        $desc      = htmlspecialchars($service->description ?? '');
-        $imgPath   = $service->image ?? '';
-        $arrival   = $service->arrival ?? '';
-        $accType   = $service->acc_type ?? '';
-        $accCat    = $service->acc_category ?? '';
+        $desc = htmlspecialchars($service->description ?? '');
+        $imgPath = $service->arrival_destination ?? '';
+        $arrival = $service->arrival ?? '';
+        $accType = $service->acc_type ?? ($service->transport_method ?? '');
+        $accCat = $service->acc_category ?? ($service->departure_location ?? '');
 
         // Auto-detect Place from category chain (same as Transport Hotel)
         if (!$service->relationLoaded('serviceCategory')) {
@@ -2015,46 +3379,69 @@ private function editTransportModal($service)
         if (!$arrival && $service->serviceCategory) {
             $chain = [];
             $walker = $service->serviceCategory->parent ?? null;
-            while ($walker) { $chain[] = $walker; $walker = $walker->parent ?? null; }
-            if (isset($chain[0])) { $arrival = $chain[0]->name; }
+            while ($walker) {
+                $chain[] = $walker;
+                $walker = $walker->parent ?? null;
+            }
+            if (isset($chain[0])) {
+                $arrival = $chain[0]->name;
+            }
         }
 
-        if (!$service->relationLoaded('venderUser')) $service->load('venderUser');
+        if (!$service->relationLoaded('venderUser'))
+            $service->load('venderUser');
         $vendorName = $service->venderUser
             ? (!empty($service->venderUser->company) ? strtoupper($service->venderUser->company) : strtoupper($service->venderUser->first_name . ' ' . $service->venderUser->last_name))
             : strtoupper($service->description ?? '');
 
         // Header
-        $html  = '<script>';
-        $html .= 'document.getElementById("libModalHead").innerHTML=\'';
+        $html = '<script>';
+        $html .= 'var hd = document.getElementById("libModalHead") || document.getElementById("catModalHead"); if(hd){hd.innerHTML=\'';
         $html .= '<h3>Modify Guides</h3>';
         $html .= '<div style="display:flex;gap:10px;align-items:center">';
-        $html .= '<a href="javascript:void(0)" onclick="closeModal()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
+        $html .= '<a href="javascript:void(0)" onclick="(typeof closeCatModal === \\\'function\\\' ? closeCatModal : closeModal)()" style="font-size:13px;font-weight:700;color:#ea580c;text-decoration:none">Cancel</a>';
         $html .= '<button form="editGuideSecForm" type="submit" style="padding:8px 18px;border-radius:8px;border:none;background:#ea580c;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Save</button>';
-        $html .= '</div>\';';
+        $html .= '</div>\';}';
         $html .= '</script>';
 
         $html .= '<form id="editGuideSecForm" onsubmit="submitEditGuideSection(' . $sid . '); return false;" enctype="multipart/form-data">';
         $html .= csrf_field();
 
-        // Flags + vendor bar
+        // ------------------ Select Vendor Dropdown ------------------
+        $venders = \App\Models\User::whereIn('user_group', ['vender', 'supplier'])->orderBy('first_name')->get();
+        $html .= '<div style="display:flex;gap:16px;margin-bottom:16px;">';
+        $html .= '<div style="flex:1;"><label style="font-size:13px;font-weight:700;color:#555;margin-bottom:6px;display:block">Select Vendor</label>';
+        $html .= '<select name="vender" id="editGuideVenderSelect" onchange="if(typeof updateEditGuideServices===\'function\'){updateEditGuideServices(this.value);}" required style="width:100%;height:40px;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-size:13px;outline:none;background:#fff">';
+        $html .= '<option value="">Select a vendor...</option>';
+        $currentGuideVender = intval($service->vender ?? 0);
+        foreach ($venders as $v) {
+            $vName = !empty($v->company) ? $v->company : trim($v->first_name . ' ' . ($v->last_name ?? ''));
+            if (!$vName) $vName = $v->email;
+            $selected = ($currentGuideVender === $v->id) ? ' selected' : '';
+            $html .= '<option value="' . $v->id . '"' . $selected . '>' . htmlspecialchars($vName) . '</option>';
+        }
+        $html .= '</select></div>';
+        $html .= '<div style="white-space:nowrap;padding-top:26px;"><strong>Vendor Price:</strong> <span style="color:#ea580c;font-weight:700;">' . number_format($service->cost ?? 0, 2) . ' JOD</span></div>';
+        $html .= '</div>';
+        $html .= '<script>(function(){ setTimeout(function(){ if(typeof SlimSelect !== "undefined") { new SlimSelect({ select: "#editGuideVenderSelect", onChange: function(info) { var val = info && info.value ? info.value : (Array.isArray(info)&&info[0]?info[0].value:""); if(val && typeof updateEditGuideServices==="function"){ updateEditGuideServices(val); } else { var tb = document.getElementById("editGuideListTbody"); if(tb) tb.innerHTML = ""; } } }); } var sel=document.getElementById("editGuideVenderSelect"); if(sel && sel.value && typeof updateEditGuideServices==="function") updateEditGuideServices(sel.value); }, 200); })();</script>';
+        // -------------------------------------------------------------------------
+
+        // Flags
         $html .= '<div style="display:flex;gap:8px;margin-bottom:22px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
-            $bg     = $active ? '#ea580c' : 'transparent';
+            $bg = $active ? '#ea580c' : 'transparent';
             $border = $active ? '2px solid #ea580c' : '2px solid transparent';
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
-        $html .= '<div style="margin-left:auto;display:flex;gap:16px;align-items:center;background:#f8f9fa;border:1px solid #e9ecef;border-radius:6px;padding:6px 14px;font-size:12px;">';
-        $html .= '<span><strong>Vendor Name:</strong> ' . htmlspecialchars($vendorName) . '</span>';
-        $html .= '<span style="color:#ccc;">|</span>';
-        $html .= '<span><strong>Vendor Price:</strong> <span style="color:#ea580c;font-weight:700;">' . number_format($service->cost ?? 0, 2) . ' JOD</span></span>';
-        $html .= '</div>';
         $html .= '</div>';
 
         // Photos section
         $existingImages = [];
-        if ($imgPath) { $d = @json_decode($imgPath, true); $existingImages = is_array($d) ? $d : [$imgPath]; }
+        if ($imgPath) {
+            $d = @json_decode($imgPath, true);
+            $existingImages = is_array($d) ? $d : [$imgPath];
+        }
         $html .= '<div style="margin-bottom:16px;">';
         $html .= '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
         $html .= '<span style="font-size:11px;font-weight:700;color:#555;">Photos:</span>';
@@ -2134,7 +3521,9 @@ private function editTransportModal($service)
 
         // GUIDES LIST
         $guideQuery = Service::where('category', $service->category)->with('venderUser')->orderBy('description');
-        if ($service->vender) { $guideQuery->where('vender', $service->vender); }
+        if ($service->vender) {
+            $guideQuery->where('vender', $service->vender);
+        }
         $guideItems = $guideQuery->get();
 
         $guidecsrf = csrf_token();
@@ -2153,14 +3542,14 @@ private function editTransportModal($service)
         $html .= '<div style="flex:1;min-width:120px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Guide Type</label>';
         $html .= '<select id="newGuideType" style="width:100%;height:36px;border:1px solid #e2e8f0;border-radius:6px;padding:0 8px;font-size:12px;background:#fff;color:#555;">';
         $html .= '<option value="">-- Type --</option>';
-        foreach (['Day Guide','Half Day Guide','Full Day Guide','Multi-Day Guide','City Tour Guide','Driver Guide','Local Guide'] as $gt) {
+        foreach (['Day Guide', 'Half Day Guide', 'Full Day Guide', 'Multi-Day Guide', 'City Tour Guide', 'Driver Guide', 'Local Guide'] as $gt) {
             $html .= '<option value="' . $gt . '">' . $gt . '</option>';
         }
         $html .= '</select></div>';
         $html .= '<div style="flex:1;min-width:120px;"><label style="font-size:10px;font-weight:700;color:#718096;display:block;margin-bottom:4px;">Guide Category</label>';
         $html .= '<select id="newGuideCat" style="width:100%;height:36px;border:1px solid #e2e8f0;border-radius:6px;padding:0 8px;font-size:12px;background:#fff;color:#555;">';
         $html .= '<option value="">-- Category --</option>';
-        foreach (['Licensed','Local','Expert','Senior','Specialist','General'] as $gc) {
+        foreach (['Licensed', 'Local', 'Expert', 'Senior', 'Specialist', 'General'] as $gc) {
             $html .= '<option value="' . $gc . '">' . $gc . '</option>';
         }
         $html .= '</select></div>';
@@ -2174,7 +3563,7 @@ private function editTransportModal($service)
         $html .= '<th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">COST</th>';
         $html .= '<th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">VENDOR</th>';
         $html .= '<th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">ACTIONS</th>';
-        $html .= '</tr></thead><tbody>';
+        $html .= '</tr></thead><tbody id="editGuideListTbody">';
         foreach ($guideItems as $g) {
             $html .= '<tr id="guideRow_' . $g->id . '" style="border-bottom:1px solid #f7fafc;">';
             $html .= '<td style="padding:7px 8px;"><span id="guideDesc_' . $g->id . '">' . htmlspecialchars($g->description ?? '-') . '</span></td>';
@@ -2198,20 +3587,77 @@ function submitEditGuideSection(id){
     var fd=new FormData(form);
     fd.append("_method","PUT");fd.append("service_type","guide");
     $.ajax({url:"/admin/services/"+id,type:"POST",data:fd,processData:false,contentType:false,
-        success:function(){closeModal();showToast("Guide saved!","success");},
+        success:function(){closeModal();showToast("Guide saved!","success");setTimeout(function(){window.location.reload();},800);},
         error:function(){showToast("Error saving guide","error");}
     });
 }
 function toggleGuideAddForm(){var f=document.getElementById("guideAddSvcForm");f.style.display=(f.style.display==="none"?"": "none");}
+
+// Re-render the Guides List for the selected vendor from the page-level
+// guideCategoriesData (mirrors updateEditActivityServices for Activities).
+function updateEditGuideServices(vendorId){
+    var tbody = document.getElementById("editGuideListTbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    if (!vendorId || typeof guideCategoriesData === "undefined") return;
+    var found = null;
+    guideCategoriesData.forEach(function(v){ if(String(v.id) === String(vendorId)) found = v; });
+    if (!found || !found.services || found.services.length === 0) {
+        tbody.innerHTML = "<tr><td colspan=4 style=padding:16px;text-align:center;color:#a0aec0;font-size:12px;>No guides found.</td></tr>";
+        return;
+    }
+    var vName = (found.name || "").toUpperCase();
+    var rowsHtml = "";
+    found.services.forEach(function(g){
+        var descEsc = String(g.description || "-").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        var descAttr = String(g.description || "").replace(/\'/g,"\\\\\'").replace(/\"/g,"&quot;");
+        rowsHtml += "<tr id=guideRow_" + g.id + " style=border-bottom:1px solid #f7fafc;>" +
+            "<td style=padding:7px 8px;><span id=guideDesc_" + g.id + ">" + descEsc + "</span></td>" +
+            "<td style=padding:7px 8px;text-align:right;color:#ea580c;font-weight:700;><span id=guideCost_" + g.id + ">" + parseFloat(g.cost || 0).toFixed(2) + "</span> JOD</td>" +
+            "<td style=padding:7px 8px;>" + vName + "</td>" +
+            "<td style=padding:7px 8px;text-align:right;white-space:nowrap;>" +
+            "<button type=button onclick=\"editGuideRow(" + g.id + ",\'" + descAttr + "\'," + (g.cost || 0) + ")\" style=background:#f0f4ff;border:none;color:#ea580c;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:4px;><i class=fa fa-pencil></i></button>" +
+            "<button type=button onclick=\"deleteGuideRow(" + g.id + ")\" style=background:#fff5f5;border:none;color:#e53e3e;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;><i class=fa fa-trash></i></button>" +
+            "</td></tr>";
+    });
+    tbody.innerHTML = rowsHtml;
+}
+
 function quickAddGuide(sid,vender,category,country,token){
+    var sel = document.getElementById("editGuideVenderSelect");
+    var selectedVendor = sel && sel.value ? sel.value : vender;
     var desc=document.getElementById("newGuideDesc").value.trim();
     var cost=document.getElementById("newGuideCost").value||0;
     var gtype=document.getElementById("newGuideType").value;
     var gcat=document.getElementById("newGuideCat").value;
     if(!desc){alert("Please enter a description.");return;}
+
+    // Reuse an existing sibling service\'s category for this vendor (guaranteed
+    // valid), falling back to this guide\'s own category if the vendor has none yet.
+    var targetCategory = category;
+    var found = null;
+    if (typeof guideCategoriesData !== "undefined") {
+        guideCategoriesData.forEach(function(v){ if(String(v.id) === String(selectedVendor)) found = v; });
+        if (found && found.services && found.services.length > 0 && found.services[0].category) {
+            targetCategory = found.services[0].category;
+        }
+    }
+
     $.ajax({url:"/admin/guides/quick-add",type:"POST",
-        data:{_token:token,description:desc,cost:cost,vender:vender,category:category,country:country,acc_type:gtype,acc_category:gcat},
-        success:function(r){if(r.success){document.getElementById("newGuideDesc").value="";document.getElementById("newGuideCost").value="0.00";document.getElementById("newGuideType").value="";document.getElementById("newGuideCat").value="";toggleGuideAddForm();showToast("Guide added!","success");}},
+        data:{_token:token,description:desc,cost:cost,vender:selectedVendor,category:targetCategory,country:country,acc_type:gtype,acc_category:gcat},
+        success:function(r){if(r.success){
+            if (!found) {
+                var selEl = document.getElementById("editGuideVenderSelect");
+                var vName = selEl && selEl.options[selEl.selectedIndex] ? selEl.options[selEl.selectedIndex].text : "No Vendor";
+                found = { id: selectedVendor, name: vName, services: [] };
+                if (typeof guideCategoriesData !== "undefined") guideCategoriesData.push(found);
+            }
+            if(!found.services) found.services = [];
+            found.services.unshift({ id: r.id || ("temp_" + Date.now()), description: desc, cost: parseFloat(cost) || 0, category: targetCategory, vender: selectedVendor });
+            document.getElementById("newGuideDesc").value="";document.getElementById("newGuideCost").value="0.00";document.getElementById("newGuideType").value="";document.getElementById("newGuideCat").value="";toggleGuideAddForm();
+            if (typeof updateEditGuideServices === "function") updateEditGuideServices(selectedVendor);
+            showToast("Guide added!","success");
+        }},
         error:function(){showToast("Error adding guide","error");}
     });
 }
@@ -2292,16 +3738,49 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         if ($request->has('vender')) {
             $data['vender'] = $request->input('vender') ?: 0;
         }
-        if ($request->has('notes')) { $data['notes'] = $request->input('notes'); }
-        if ($request->has('acc_type')) { $data['acc_type'] = $request->input('acc_type'); }
-        if ($request->has('acc_category')) { $data['acc_category'] = $request->input('acc_category'); }
-        if ($request->has('website')) { $data['website'] = $request->input('website'); }
-        if ($request->has('arrival')) { $data['arrival'] = $request->input('arrival'); }
-        if ($request->has('transport_method')) { $data['transport_method'] = $request->input('transport_method'); }
-        if ($request->has('departure_location')) { $data['departure_location'] = $request->input('departure_location'); }
-        if ($request->has('arrival_destination')) { $data['arrival_destination'] = $request->input('arrival_destination'); }
-        if ($request->has('length_time')) { $data['length_time'] = $request->input('length_time'); }
-        if ($request->has('distance_km')) { $data['distance_km'] = $request->input('distance_km'); }
+        
+        $isGuide = ($request->input('service_type') === 'guide');
+
+        if ($request->has('notes') && !$isGuide) {
+            $data['notes'] = $request->input('notes');
+        }
+        if ($request->has('acc_type') && !$isGuide) {
+            $data['acc_type'] = $request->input('acc_type');
+        }
+        if ($request->has('acc_category') && !$isGuide) {
+            $data['acc_category'] = $request->input('acc_category');
+        }
+        if ($request->has('website') && !$isGuide) {
+            $data['website'] = $request->input('website');
+        }
+        if ($request->has('arrival') && !$isGuide) {
+            $data['arrival'] = $request->input('arrival');
+        }
+        
+        // Map non-existing columns to unused existing columns for Guide
+        if ($isGuide) {
+            if ($request->has('acc_type')) {
+                $data['transport_method'] = $request->input('acc_type');
+            }
+            if ($request->has('acc_category')) {
+                $data['departure_location'] = $request->input('acc_category');
+            }
+        }
+        if (!$isGuide && $request->has('transport_method')) {
+            $data['transport_method'] = $request->input('transport_method');
+        }
+        if (!$isGuide && $request->has('departure_location')) {
+            $data['departure_location'] = $request->input('departure_location');
+        }
+        if ($request->has('arrival_destination')) {
+            $data['arrival_destination'] = $request->input('arrival_destination');
+        }
+        if ($request->has('length_time')) {
+            $data['length_time'] = $request->input('length_time');
+        }
+        if ($request->has('distance_km')) {
+            $data['distance_km'] = $request->input('distance_km');
+        }
 
         // Handle multi-image: keep existing + add new
         if ($request->has('existing_images') || $request->hasFile('new_images')) {
@@ -2319,6 +3798,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $filename = time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
             $file->move(public_path('uploads/services'), $filename);
             $data['image'] = 'uploads/services/' . $filename;
+        }
+
+        if ($isGuide && isset($data['image'])) {
+            $data['arrival_destination'] = $data['image'];
+            unset($data['image']);
         }
 
         $service->update($data);
@@ -2365,7 +3849,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $service = Service::findOrFail($id);
         }
 
-        $country  = $service->country  ?? null;
+        $country = $service->country ?? null;
         $category = $service->category ?? null;
         $service->delete();
 
@@ -2383,19 +3867,19 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     public function venders(Request $request)
     {
         $venders = User::whereIn('user_group', ['vender', 'supplier'])
-            ->when($request->filled('country'), function($q) use($request) {
+            ->when($request->filled('country'), function ($q) use ($request) {
                 return $q->where('country', $request->country);
             })
-            ->when($request->filled('email'), function($q) use($request) {
+            ->when($request->filled('email'), function ($q) use ($request) {
                 return $q->where('email', 'like', '%' . $request->email . '%');
             })
-            ->when($request->filled('first_name'), function($q) use($request) {
+            ->when($request->filled('first_name'), function ($q) use ($request) {
                 return $q->where('first_name', 'like', '%' . $request->first_name . '%');
             })
-            ->when($request->filled('last_name'), function($q) use($request) {
+            ->when($request->filled('last_name'), function ($q) use ($request) {
                 return $q->where('last_name', 'like', '%' . $request->last_name . '%');
             })
-            ->when($request->filled('company'), function($q) use($request) {
+            ->when($request->filled('company'), function ($q) use ($request) {
                 return $q->where('company', 'like', '%' . $request->company . '%');
             })
             ->with(['venderDetail', 'venderBalance'])
@@ -2592,26 +4076,26 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         // Fetch Vendor logic
         $vendorName = 'N/A';
         $vendorPrice = '0.00 JOD';
-        
+
         if (!empty($category->name)) {
             $vendorMatch = \App\Models\User::whereIn('user_group', ['vender', 'supplier'])
                 ->where('company', 'like', '%' . trim($category->name) . '%')
                 ->first();
-                
+
             if ($vendorMatch) {
                 $vendorName = $vendorMatch->company ?: ($vendorMatch->first_name . ' ' . $vendorMatch->last_name);
                 $balanceRow = \Illuminate\Support\Facades\DB::table('en33_services_vender_balance')
                     ->where('vender_id', $vendorMatch->id)
                     ->first();
                 if ($balanceRow) {
-                    $vendorPrice = number_format((float)$balanceRow->balance, 2) . ' JOD';
+                    $vendorPrice = number_format((float) $balanceRow->balance, 2) . ' JOD';
                 }
             }
         }
 
         // Language flags & Vendor Details row
         $html .= '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:22px;">';
-        
+
         $html .= '<div style="display:flex;gap:8px;align-items:center">';
         foreach ($flags as $f) {
             $active = ($f['code'] === 'en');
@@ -2620,7 +4104,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<div style="width:40px;height:32px;border-radius:6px;border:' . $border . ';background:' . $bg . ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:20px;">' . $f['emoji'] . '</div>';
         }
         $html .= '</div>';
-        
+
         // Horizontal Vendor Details
         $html .= '<div style="display:flex; gap:20px; align-items:center; background:#f8f9fa; border:1px solid #ddd; border-radius:8px; padding:14px 28px;">';
         $html .= '<div><span style="font-size:11px; color:#555;">Vendor Name:</span> <strong style="font-size:13px; color:#2c3e50; margin-left:6px;">' . htmlspecialchars($vendorName) . '</strong></div>';
@@ -2638,7 +4122,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</div>';
         $html .= '<input type="file" name="new_images[]" id="editCatImageInput" accept="image/*" multiple style="display:none" onchange="addAccImages(this)">';
         $html .= '<div id="catPhotosRow" style="border:1px dashed #ccc;border-radius:4px;min-height:120px;display:flex;overflow-x:auto;gap:8px;padding:8px;align-items:center;">';
-        
+
         // Display existing images if any
         $existingImages = [];
         if (!empty($category->image)) {
@@ -2649,7 +4133,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $existingImages = [$category->image];
             }
         }
-        
+
         foreach ($existingImages as $img) {
             $imgUrl = (str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/');
             $html .= '<div class="acc-photo-wrap" style="position:relative;flex-shrink:0;height:104px;">';
@@ -2658,7 +4142,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
             $html .= '</div>';
         }
-        
+
         $html .= '<div onclick="document.getElementById(\'editCatImageInput\').click()" style="flex-shrink:0;width:100px;height:104px;border:2px dashed #ccc;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#aaa;font-size:28px;">+</div>';
         $html .= '</div>';
         $html .= '</div>';
@@ -2675,7 +4159,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '</fieldset>';
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;width:auto;border-bottom:none;margin-bottom:0;line-height:1;">Description</legend>';
-        $html .= '<textarea name="notes" style="width:100%;min-height:160px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">' . htmlspecialchars((string)($category->description ?? '')) . '</textarea>';
+        $html .= '<textarea name="notes" style="width:100%;min-height:160px;border:none;outline:none;padding:8px 12px;font-size:13px;resize:vertical;background:transparent;" placeholder="Add a description">' . htmlspecialchars((string) ($category->description ?? '')) . '</textarea>';
         $html .= '</fieldset>';
 
         $html .= '</div>';
@@ -2685,18 +4169,20 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;width:auto;border-bottom:none;margin-bottom:0;line-height:1;">Place Of Interest</legend>';
         $arrivalValue = $category->arrival ?: ($category->parent ? $category->parent->name : '');
-        $html .= '<input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" placeholder="Add a destination" value="' . htmlspecialchars((string)($arrivalValue)) . '" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)">';
+        $html .= '<input type="text" id="editAccArrivalInput" name="arrival" autocomplete="off" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" placeholder="Add a destination" value="' . htmlspecialchars((string) ($arrivalValue)) . '" oninput="libAccAutocomplete(this.value)" onkeydown="libAccInputKey(event)">';
         $html .= '<div id="editAccArrivalDropdown" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:220px;overflow-y:auto;"></div>';
         $html .= '</fieldset>';
 
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;width:auto;border-bottom:none;margin-bottom:0;line-height:1;">Accommodation Type</legend>';
-        
+
         $accType = 'Hotel';
         if ($category->parent && $category->parent->parent && $category->parent->parent->parent) {
             $rootName = $category->parent->parent->parent->name;
-            if (stripos($rootName, 'camp') !== false) $accType = 'Camp';
-            elseif (stripos($rootName, 'homestay') !== false) $accType = 'Homestay';
+            if (stripos($rootName, 'camp') !== false)
+                $accType = 'Camp';
+            elseif (stripos($rootName, 'homestay') !== false)
+                $accType = 'Homestay';
         }
         $types = ['Hotel', 'Camp', 'Homestay', 'Mobile Camp', 'Wild Jordan RSCN'];
         $html .= '<select name="acc_type" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -2711,10 +4197,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $gpName = $category->parent->parent->name;
             if (preg_match('/^(\d)\s*(★|Star)/i', $gpName, $m)) {
                 $starRating = $m[1] . ' ';
-                for($i=0; $i<$m[1]; $i++) $starRating .= '★';
+                for ($i = 0; $i < $m[1]; $i++)
+                    $starRating .= '★';
             }
         }
-        $cats = ['1 ★','2 ★★','3 ★★★','4 ★★★★','5 ★★★★★'];
+        $cats = ['1 ★', '2 ★★', '3 ★★★', '4 ★★★★', '5 ★★★★★'];
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0 0 16px 0;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;width:auto;border-bottom:none;margin-bottom:0;line-height:1;">Category</legend>';
         $html .= '<select name="acc_category" style="width:100%;height:40px;border:none;outline:none;padding:0 8px;font-size:13px;background:transparent;color:#555;">';
@@ -2727,7 +4214,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         $html .= '<fieldset style="border:1px solid #ddd;border-radius:4px;padding:0;margin:0;position:relative;">';
         $html .= '<legend style="font-size:10px;color:#999;margin-left:10px;padding:0 4px;width:auto;border-bottom:none;margin-bottom:0;line-height:1;">Website</legend>';
-        $html .= '<input type="text" name="website" placeholder="e.g. https://www.example.com" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . htmlspecialchars((string)($category->website ?? '')) . '">';
+        $html .= '<input type="text" name="website" placeholder="e.g. https://www.example.com" style="width:100%;height:40px;border:none;outline:none;padding:0 12px;font-size:13px;background:transparent;" value="' . htmlspecialchars((string) ($category->website ?? '')) . '">';
         $html .= '</fieldset>';
 
         $html .= '</div>';
@@ -2763,7 +4250,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $existingImages = [$category->image];
             }
         }
-        
+
         $keptImages = $request->input('existing_images', []);
         $finalImages = array_intersect($existingImages, $keptImages);
 
@@ -2777,24 +4264,24 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $imageJson = count($finalImages) > 0 ? json_encode(array_values($finalImages)) : null;
 
         $baseName = $request->input('categ_name');
-        $newArrival = trim((string)$request->input('arrival', ''));
-        
+        $newArrival = trim((string) $request->input('arrival', ''));
+
         $duplicates = ServiceCategory::where('name', $category->name)
             ->where('country_id', $category->country_id)
             ->get();
-            
+
         foreach ($duplicates as $dup) {
             $dup->name = $baseName;
             $dup->description = $request->input('notes');
             $dup->arrival = $newArrival;
             $dup->website = $request->input('website');
             $dup->image = $imageJson;
-            
+
             // Only update parent_id if it's the exact one they are editing
             if ($dup->id == $category->id) {
                 $dup->parent_id = intval($request->input('category_parent'));
             }
-            
+
             // Auto-move logic ONLY for items inside the "Hotels" tree
             if (!empty($newArrival)) {
                 $currentParent = ServiceCategory::find($dup->parent_id);
@@ -2828,7 +4315,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     public function destroyCategory($id)
     {
         $category = ServiceCategory::findOrFail($id);
-        
+
         // Check if it has children or services
         if ($category->children()->count() > 0 || $category->services()->count() > 0) {
             return response()->json(['success' => false, 'message' => 'Cannot delete category that has subcategories or services.']);
@@ -2899,7 +4386,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $overlap = ServiceSeason::where('service_id', $service->id)
             ->where(function ($query) use ($newFrom, $newTo) {
                 $query->where('date_from', '<=', $newTo)
-                      ->where('date_to', '>=', $newFrom);
+                    ->where('date_to', '>=', $newFrom);
             })->exists();
 
         if ($overlap) {
@@ -2933,8 +4420,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $season = ServiceSeason::findOrFail($seasonId);
         $season->date_from = $request->input('date_from');
-        $season->date_to   = $request->input('date_to');
-        $season->cost      = floatval($request->input('cost', 0));
+        $season->date_to = $request->input('date_to');
+        $season->cost = floatval($request->input('cost', 0));
         $season->save();
         return response()->json(['success' => true]);
     }
@@ -2980,7 +4467,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $unpaidBalance = $expenses->where('payment_status', 'u')->sum('cost');
 
         $html = '<div class="tw-flex tw-flex-col tw-gap-0 tw-bg-slate-50">';
-        
+
         // Header
         $html .= '<div class="tw-px-10 tw-py-14 tw-bg-orange-900 tw-flex tw-justify-between tw-items-center tw-relative tw-overflow-hidden">';
         $html .= '    <div class="tw-absolute tw-top-0 tw-right-0 tw-w-[600px] tw-h-[600px] tw-bg-orange-500/10 tw-rounded-full -tw-mr-64 -tw-mt-64 tw-blur-3xl"></div>';
@@ -3055,10 +4542,10 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         foreach ($expenses as $e) {
             $html .= '<tr class="group hover:tw-bg-orange-500/[0.02] tw-transition-all tw-duration-300">';
-            
+
             // Description
             $html .= '<td class="tw-px-10 tw-py-8">';
-            if($e->invoice) {
+            if ($e->invoice) {
                 $html .= '<span class="tw-text-xs tw-font-black tw-text-orange-900 tw-block tw-mb-2.5 tw-tracking-tight">' . htmlspecialchars($e->invoice->desc) . '</span>';
             }
             $html .= '<div class="tw-flex tw-items-center tw-gap-3">';
@@ -3068,7 +4555,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<span class="tw-text-[11px] tw-text-slate-500 tw-font-bold tw-line-clamp-1">' . htmlspecialchars($e->desc) . '</span>';
             $html .= '</div>';
             if ($e->confirmation_number) {
-                 $html .= '<div class="tw-mt-4 tw-flex tw-items-center tw-gap-2 tw-text-orange-500 tw-text-[9px] tw-font-black tw-uppercase tw-tracking-[0.2em]"><div class="tw-w-4 tw-h-px tw-bg-orange-500/30"></div> REF: ' . htmlspecialchars($e->confirmation_number) . '</div>';
+                $html .= '<div class="tw-mt-4 tw-flex tw-items-center tw-gap-2 tw-text-orange-500 tw-text-[9px] tw-font-black tw-uppercase tw-tracking-[0.2em]"><div class="tw-w-4 tw-h-px tw-bg-orange-500/30"></div> REF: ' . htmlspecialchars($e->confirmation_number) . '</div>';
             }
             $html .= '</td>';
 
@@ -3171,7 +4658,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         ];
 
         $html = '<div class="tw-flex tw-flex-col tw-gap-0 tw-bg-slate-50">';
-        
+
         // Header
         $html .= '<div class="tw-px-10 tw-py-14 tw-bg-orange-900 tw-flex tw-justify-between tw-items-center tw-relative tw-overflow-hidden">';
         $html .= '    <div class="tw-absolute tw-bottom-0 tw-left-0 tw-w-[700px] tw-h-[700px] tw-bg-orange-500/10 tw-rounded-full -tw-ml-64 -tw-mb-64 tw-blur-3xl"></div>';
@@ -3236,7 +4723,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $html .= '                </div>';
         $html .= '                <button type="button" class="btn orange !tw-px-10 !tw-py-4 tw-text-[11px] tw-font-black tw-uppercase tw-tracking-widest tw-flex tw-items-center tw-gap-3 tw-shadow-2xl tw-shadow-orange-500/20 hover:tw-scale-105 tw-transition-transform" onclick="addVenderImage();"><i class="fa fa-folder-open"></i> Assets Manager</button>';
         $html .= '            </div>';
-        
+
         $html .= '            <div id="vender_images_container" class="tw-grid tw-grid-cols-2 md:tw-grid-cols-3 lg:tw-grid-cols-5 tw-gap-10">';
         if (!empty($images)) {
             foreach ($images as $img) {
@@ -3278,7 +4765,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     public function updateVenderDescription(Request $request, $id)
     {
         $vender = User::findOrFail($id);
-        
+
         $desc = $request->input('desc', []);
         $images = $request->input('images', []);
 
@@ -3319,9 +4806,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         if ($countryId) {
             // Get Canned Days with English content
-            $cannedDays = \App\Models\TourCannedDay::with(['contents' => function($q) {
-                $q->where('lang', 'en');
-            }])->orderByDesc('id')->limit(5)->get();
+            $cannedDays = \App\Models\TourCannedDay::with([
+                'contents' => function ($q) {
+                    $q->where('lang', 'en');
+                }
+            ])->orderByDesc('id')->limit(5)->get();
 
             // Only show these specific categories (404 Hotels is now a sub-category of 403 Accommodations)
             $allowedCatIds = [403, 93, 715, 456, 527];
@@ -3332,13 +4821,13 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             // Clean display names
             $displayNames = [
                 403 => 'Accommodations',
-                93  => 'Activities',
+                93 => 'Activities',
                 715 => 'Transportation',
                 456 => 'Restaurants',
             ];
 
             // Display order
-            $rootCategories = $rootCategories->sortBy(function($cat) {
+            $rootCategories = $rootCategories->sortBy(function ($cat) {
                 $order = [403 => 1, 93 => 2, 715 => 3, 456 => 4, 527 => 5];
                 return $order[$cat->id] ?? 99;
             });
@@ -3411,11 +4900,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                     // Map root cat ID to service type
                     $typeMap = [403 => 'accommodation', 93 => 'activity_section', 715 => 'transport_section', 456 => 'restaurant_section', 527 => 'guide'];
                     $groupedServices[] = [
-                        'category'      => $rootCat,
-                        'services'      => $services,
-                        'total'         => $totalCount,
+                        'category' => $rootCat,
+                        'services' => $services,
+                        'total' => $totalCount,
                         'subCategories' => $subCategories,
-                        'type'          => $typeMap[$rootCat->id] ?? 'service',
+                        'type' => $typeMap[$rootCat->id] ?? 'service',
                     ];
                 }
             }
@@ -3429,8 +4918,10 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 // $star->name is like "5 Stars" or "5 Star". Let's normalize it to the options in our select
                 $starLabel = $star->name;
                 // "4 Stars" -> "4 Star", "5 Stars" -> "5 Star" to match dropdown values
-                if (str_contains($starLabel, '4 Star')) $starLabel = '4 Star';
-                if (str_contains($starLabel, '5 Star')) $starLabel = '5 Star';
+                if (str_contains($starLabel, '4 Star'))
+                    $starLabel = '4 Star';
+                if (str_contains($starLabel, '5 Star'))
+                    $starLabel = '5 Star';
 
                 $hotelsInStar = [];
                 // Cities under this star
@@ -3445,9 +4936,9 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                         ];
                     }
                 }
-                
+
                 // Sort alphabetically by name
-                usort($hotelsInStar, function($a, $b) {
+                usort($hotelsInStar, function ($a, $b) {
                     return strcmp($a['name'], $b['name']);
                 });
 
@@ -3459,7 +4950,13 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $totalDays = \App\Models\TourCannedDay::count();
 
         return view('admin.services.library', compact(
-            'countries', 'countryId', 'groupedServices', 'rootCategories', 'cannedDays', 'totalDays', 'hotelsByStar'
+            'countries',
+            'countryId',
+            'groupedServices',
+            'rootCategories',
+            'cannedDays',
+            'totalDays',
+            'hotelsByStar'
         ));
     }
 
@@ -3472,21 +4969,21 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $segment = $request->segment(3); // 'activity', 'transport', 'accommodation', 'restaurant', 'guide'
 
         $categoryMap = [
-            'activity'      => ['id' => 93,  'name' => 'Activity',      'icon' => 'fa-binoculars'],
-            'transport'     => ['id' => 715, 'name' => 'Transport',     'icon' => 'fa-car'],
+            'activity' => ['id' => 93, 'name' => 'Activity', 'icon' => 'fa-binoculars'],
+            'transport' => ['id' => 715, 'name' => 'Transport', 'icon' => 'fa-car'],
             'accommodation' => ['id' => 403, 'name' => 'Accommodation', 'icon' => 'fa-bed'],
-            'restaurant'    => ['id' => 456, 'name' => 'Restaurant',    'icon' => 'fa-cutlery'],
-            'guide'         => ['id' => 527, 'name' => 'Guide',         'icon' => 'fa-user'],
+            'restaurant' => ['id' => 456, 'name' => 'Restaurant', 'icon' => 'fa-cutlery'],
+            'guide' => ['id' => 527, 'name' => 'Guide', 'icon' => 'fa-user'],
         ];
 
         if (!isset($categoryMap[$segment])) {
             abort(404);
         }
 
-        $catInfo   = $categoryMap[$segment];
-        $catId     = $catInfo['id'];
-        $catName   = $catInfo['name'];
-        $catIcon   = $catInfo['icon'];
+        $catInfo = $categoryMap[$segment];
+        $catId = $catInfo['id'];
+        $catName = $catInfo['name'];
+        $catIcon = $catInfo['icon'];
 
         // Country
         $targetCountryNames = ['Egypt', 'Jordan', 'Lebanon', 'Libya', 'Morocco', 'Oman', 'Palestine', 'Qatar', 'Saudi Arabia'];
@@ -3500,11 +4997,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
         $countryId = $request->input('country');
         if (!$countryId) {
-            $jordanId  = array_search('Jordan', $countries);
+            $jordanId = array_search('Jordan', $countries);
             $countryId = $jordanId !== false ? $jordanId : array_key_first($countries);
         }
 
-        $search   = trim($request->input('search', ''));
+        $search = trim($request->input('search', ''));
         $services = collect();
 
         if ($countryId) {
@@ -3514,14 +5011,16 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $catIds[] = 403;
                 $query = \App\Models\Accommodation::whereIn('category', $catIds)
                     ->with('venderUser', 'serviceCategory.parent');
-                if ($search) $query->where('descriptionL', 'like', '%' . $search . '%');
+                if ($search)
+                    $query->where('descriptionL', 'like', '%' . $search . '%');
                 $services = $query->orderByDesc('id')->get();
 
             } elseif ($catId == 715) {
                 // Transport — en33_transports
                 $query = \App\Models\Transport::where('country', $countryId)
                     ->with('venderUser', 'serviceCategory');
-                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                if ($search)
+                    $query->where('description', 'like', '%' . $search . '%');
                 $services = $query->orderByDesc('id')->get();
 
             } elseif ($catId == 93) {
@@ -3530,7 +5029,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $catIds[] = 93;
                 $query = \App\Models\Activity::where('country', $countryId)
                     ->with('venderUser', 'serviceCategory');
-                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                if ($search)
+                    $query->where('description', 'like', '%' . $search . '%');
                 $services = $query->orderByDesc('id')->get();
 
             } elseif ($catId == 456) {
@@ -3539,7 +5039,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $catIds[] = 456;
                 $query = \App\Models\Restaurant::whereIn('category', $catIds)
                     ->with('venderUser', 'serviceCategory.parent');
-                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                if ($search)
+                    $query->where('description', 'like', '%' . $search . '%');
                 $services = $query->orderByDesc('id')->get();
 
             } elseif ($catId == 527) {
@@ -3548,13 +5049,187 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $catIds[] = 527;
                 $query = \App\Models\Service::whereIn('category', $catIds)
                     ->with('venderUser', 'serviceCategory');
-                if ($search) $query->where('description', 'like', '%' . $search . '%');
+                if ($search)
+                    $query->where('description', 'like', '%' . $search . '%');
                 $services = $query->orderByDesc('id')->get();
             }
         }
 
+        $venders = \App\Models\User::where('user_group', 'supplier')->orderBy('first_name')->get();
+        $transCompanies = collect();
+        $companyMethodData = [];
+        if ($catId == 715) {
+            $transCompanies = \App\Models\ServiceCategory::where('parent_id', $catId)->orderBy('name')->get();
+            // Build companyMethodData for Create Transport modal (same structure as editTransportModal)
+            foreach ($transCompanies as $companyCat) {
+                $childCatsInfo = \App\Models\ServiceCategory::where('parent_id', $companyCat->id)->get();
+                $methodsList = [];
+                foreach ($childCatsInfo as $childCat) {
+                    $childSvcs = Service::where('category', $childCat->id)->get(['id', 'description', 'cost', 'vender', 'transport_method', 'departure_location', 'arrival_destination', 'length_time', 'distance_km']);
+                    $methodsList[] = ['id' => $childCat->id, 'name' => $childCat->name, 'services' => $childSvcs->values()->toArray()];
+                }
+                $directSvcs = Service::where('category', $companyCat->id)->get(['id', 'description', 'cost', 'vender', 'transport_method', 'departure_location', 'arrival_destination', 'length_time', 'distance_km']);
+                $companyMethodData[strval($companyCat->id)] = [
+                    'catId' => $companyCat->id,
+                    'name' => $companyCat->name,
+                    'methods' => $methodsList,
+                    'directServices' => $directSvcs->values()->toArray()
+                ];
+            }
+        }
+
+        $restCategoriesData = [];
+        $restSubServicesData = [];
+        if ($catId == 456) {
+            $cities = \App\Models\ServiceCategory::where('parent_id', 456)->orderBy('name')->get();
+            $allRestCatIds = [];
+            foreach ($cities as $c) {
+                $rests = \App\Models\ServiceCategory::where('parent_id', $c->id)->pluck('id')->toArray();
+                $allRestCatIds = array_merge($allRestCatIds, $rests);
+            }
+            $allRestCatIds = array_unique($allRestCatIds);
+            $allRestCatIds[] = 456;
+
+            $subSvcs = Service::whereIn('category', $allRestCatIds)->with('venderUser')->get(['id', 'description', 'cost', 'vender', 'category']);
+
+            $vendorMap = [];
+            foreach($subSvcs as $sub) {
+                $restSubServicesData[] = $sub;
+
+                $vendorId = $sub->vender ?? 0;
+                if (!isset($vendorMap[$vendorId])) {
+                    $vendorName = 'No Vendor';
+                    if ($sub->venderUser) {
+                        $vendorName = !empty($sub->venderUser->company)
+                            ? $sub->venderUser->company
+                            : trim($sub->venderUser->first_name . ' ' . $sub->venderUser->last_name);
+                    }
+                    $vendorMap[$vendorId] = [
+                        'id' => $vendorId,
+                        'name' => $vendorName,
+                        'services' => []
+                    ];
+                }
+                $vendorMap[$vendorId]['services'][] = [
+                    'id'          => $sub->id,
+                    'description' => $sub->description,
+                    'cost'        => $sub->cost,
+                    'vender'      => $sub->vender,
+                    'category'    => $sub->category,
+                    'vendor_name' => $vendorMap[$vendorId]['name'],
+                ];
+            }
+
+            foreach ($vendorMap as $vm) {
+                if (count($vm['services']) > 0) {
+                    $restCategoriesData[] = $vm;
+                }
+            }
+        }
+
+        $actCategoriesData = [];
+        if ($catId == 93) {
+            $actSubCats = \App\Models\ServiceCategory::where('parent_id', 204)->orderBy('name')->get(['id', 'name', 'country_id']);
+            $allActCatIds = [];
+            foreach ($actSubCats as $ac) {
+                $duplicateIds = \App\Models\ServiceCategory::where('name', $ac->name)
+                    ->where('country_id', $countryId)
+                    ->pluck('id')->toArray();
+                $allActCatIds = array_unique(array_merge($allActCatIds, [$ac->id], $duplicateIds));
+            }
+
+            // Get all services for all activity sub-categories, group by vendor
+            $acSvcs = Service::whereIn('category', $allActCatIds)->with('venderUser')->get(['id', 'description', 'cost', 'vender', 'category']);
+
+            $vendorGroups = [];
+            foreach ($acSvcs as $svc) {
+                $vendorId = $svc->vender ?? 0;
+                $vendorName = 'No Vendor';
+                if ($svc->venderUser) {
+                    $vendorName = !empty($svc->venderUser->company)
+                        ? $svc->venderUser->company
+                        : trim($svc->venderUser->first_name . ' ' . $svc->venderUser->last_name);
+                }
+                if (!isset($vendorGroups[$vendorId])) {
+                    $vendorGroups[$vendorId] = [
+                        'id'       => $vendorId,
+                        'name'     => $vendorName,
+                        'services' => []
+                    ];
+                }
+                $vendorGroups[$vendorId]['services'][] = [
+                    'id'          => $svc->id,
+                    'description' => $svc->description,
+                    'cost'        => $svc->cost,
+                    'vender'      => $svc->vender,
+                    'category'    => $svc->category,
+                    'vendor_name' => $vendorName,
+                ];
+            }
+            foreach ($vendorGroups as $vg) {
+                if (count($vg['services']) > 0) {
+                    $actCategoriesData[] = $vg;
+                }
+            }
+        }
+
+        $guideCategoriesData = [];
+        if ($catId == 527) {
+            $allGuideCatIds = $this->getAllDescendantIds(527, $countryId);
+            $allGuideCatIds[] = 527;
+            $allGuideCatIds = array_unique($allGuideCatIds);
+
+            // Get all services under the Guides tree, grouped by vendor (same pattern as Activities)
+            $guideSvcs = Service::whereIn('category', $allGuideCatIds)->with('venderUser')->get(['id', 'description', 'cost', 'vender', 'category']);
+
+            $guideVendorGroups = [];
+            foreach ($guideSvcs as $svc) {
+                $vendorId = $svc->vender ?? 0;
+                $vendorName = 'No Vendor';
+                if ($svc->venderUser) {
+                    $vendorName = !empty($svc->venderUser->company)
+                        ? $svc->venderUser->company
+                        : trim($svc->venderUser->first_name . ' ' . $svc->venderUser->last_name);
+                }
+                if (!isset($guideVendorGroups[$vendorId])) {
+                    $guideVendorGroups[$vendorId] = [
+                        'id'       => $vendorId,
+                        'name'     => $vendorName,
+                        'services' => []
+                    ];
+                }
+                $guideVendorGroups[$vendorId]['services'][] = [
+                    'id'          => $svc->id,
+                    'description' => $svc->description,
+                    'cost'        => $svc->cost,
+                    'vender'      => $svc->vender,
+                    'category'    => $svc->category,
+                    'vendor_name' => $vendorName,
+                ];
+            }
+            foreach ($guideVendorGroups as $vg) {
+                if (count($vg['services']) > 0) {
+                    $guideCategoriesData[] = $vg;
+                }
+            }
+        }
+
         return view('admin.services.library_category', compact(
-            'catName', 'catIcon', 'catId', 'segment', 'services', 'countryId', 'countries', 'search'
+            'catName',
+            'catIcon',
+            'catId',
+            'segment',
+            'services',
+            'countryId',
+            'countries',
+            'search',
+            'venders',
+            'transCompanies',
+            'companyMethodData',
+            'restCategoriesData',
+            'restSubServicesData',
+            'actCategoriesData',
+            'guideCategoriesData'
         ));
     }
 
@@ -3580,7 +5255,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         }
 
         $starCats = ServiceCategory::where('country_id', $countryId)
-            ->where(function($q) use ($pattern1, $pattern2) {
+            ->where(function ($q) use ($pattern1, $pattern2) {
                 $q->where('name', $pattern1)->orWhere('name', $pattern2);
             })->get();
 
@@ -3602,13 +5277,17 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        return response()->json(['services' => $vendors->map(function($v) {
-            return ['id' => $v->id, 'name' => $v->name];
-        })]);
+        return response()->json([
+            'services' => $vendors->map(function ($v) {
+                return ['id' => $v->id, 'name' => $v->name];
+            })
+        ]);
     }
 
-    private function getLeafNodes($parentId, &$leafNodes, &$visited = []) {
-        if (in_array($parentId, $visited)) return;
+    private function getLeafNodes($parentId, &$leafNodes, &$visited = [])
+    {
+        if (in_array($parentId, $visited))
+            return;
         $visited[] = $parentId;
 
         $children = ServiceCategory::where('parent_id', $parentId)->pluck('id')->toArray();
@@ -3628,18 +5307,23 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $request->validate([
             'description' => 'required|string|max:255',
-            'cost'        => 'nullable|numeric|min:0',
-            'category'    => 'required|integer',
-            'country'     => 'nullable|integer',
-            'vender'      => 'nullable|integer',
+            'cost' => 'nullable|numeric|min:0',
+            'category' => 'required|integer',
+            'country' => 'nullable|integer',
+            'vender' => 'nullable|integer',
         ]);
 
         $svc = new \App\Models\Service();
         $svc->description = $request->input('description');
-        $svc->cost        = $request->input('cost', 0);
-        $svc->category    = $request->input('category');
-        $svc->country     = $request->input('country', 123);
-        $svc->vender      = $request->input('vender') ?: null;
+        $svc->cost = $request->input('cost', 0);
+        $svc->category = $request->input('category');
+        $svc->country = $request->input('country', 123);
+        $svc->vender = $request->input('vender', 0) ?: 0;
+        if ($request->has('transport_method')) $svc->transport_method = $request->input('transport_method');
+        if ($request->has('departure_location')) $svc->departure_location = $request->input('departure_location');
+        if ($request->has('arrival_destination')) $svc->arrival_destination = $request->input('arrival_destination');
+        if ($request->has('length_time')) $svc->length_time = $request->input('length_time');
+        if ($request->has('distance_km')) $svc->distance_km = $request->input('distance_km');
         $svc->save();
 
         return response()->json(['success' => true, 'id' => $svc->id]);
@@ -3652,16 +5336,16 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $request->validate([
             'description' => 'required|string|max:255',
-            'cost'        => 'nullable|numeric|min:0',
-            'country'     => 'nullable|integer',
-            'vender'      => 'nullable|integer',
+            'cost' => 'nullable|numeric|min:0',
+            'country' => 'nullable|integer',
+            'vender' => 'nullable|integer',
         ]);
 
         $tr = new \App\Models\Transport();
         $tr->description = $request->input('description');
-        $tr->cost        = $request->input('cost', 0);
-        $tr->country     = $request->input('country', 123);
-        $tr->vender      = $request->input('vender') ?: null;
+        $tr->cost = $request->input('cost', 0);
+        $tr->country = $request->input('country', 123);
+        $tr->vender = $request->input('vender') ?: null;
         $tr->save();
 
         return response()->json(['success' => true, 'id' => $tr->id]);
@@ -3671,20 +5355,20 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $request->validate([
             'description' => 'required|string|max:255',
-            'cost'        => 'nullable|numeric|min:0',
-            'country'     => 'nullable|integer',
-            'vender'      => 'nullable|integer',
-            'category'    => 'nullable|integer',
+            'cost' => 'nullable|numeric|min:0',
+            'country' => 'nullable|integer',
+            'vender' => 'nullable|integer',
+            'category' => 'nullable|integer',
         ]);
 
         $svc = new Service();
         $svc->description = $request->input('description');
-        $svc->cost        = $request->input('cost', 0);
-        $svc->country     = $request->input('country', 123);
-        $svc->vender      = $request->input('vender') ?: null;
-        $svc->category    = $request->input('category') ?: null;
-        $svc->acc_type    = $request->input('acc_type') ?: null;
-        $svc->acc_category = $request->input('acc_category') ?: null;
+        $svc->cost = $request->input('cost', 0);
+        $svc->country = $request->input('country', 123);
+        $svc->vender = $request->input('vender') ?: null;
+        $svc->category = $request->input('category') ?: null;
+        $svc->transport_method = $request->input('acc_type') ?: null;
+        $svc->departure_location = $request->input('acc_category') ?: null;
         $svc->save();
 
         return response()->json(['success' => true, 'id' => $svc->id]);
@@ -3694,19 +5378,26 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $request->validate([
             'description' => 'required|string|max:255',
-            'cost'        => 'nullable|numeric|min:0',
-            'country'     => 'nullable|integer',
-            'vender'      => 'nullable|integer',
-            'category'    => 'nullable|integer',
+            'cost' => 'nullable|numeric|min:0',
+            'country' => 'nullable|integer',
+            'vender' => 'nullable|integer',
+            'category' => 'nullable|integer',
         ]);
 
         $act = new Activity();
-        $act->description  = $request->input('description');
-        $act->cost         = $request->input('cost', 0);
-        $act->country      = $request->input('country', 123);
-        $act->vender       = $request->input('vender') ?: null;
-        $act->category     = $request->input('category') ?: null;
-        $act->acc_type     = $request->input('acc_type') ?: null;
+        $act->description = $request->input('description');
+        $act->cost = $request->input('cost', 0);
+        $act->country = $request->input('country', 123);
+        $act->vender = $request->input('vender') ?: null;
+        $act->category = $request->input('category') ?: null;
+        $act->acc_type = $request->input('acc_type') ?: null;
+        $act->acc_category = $request->input('acc_category') ?: null;
+
+        if ($request->has('transport_method')) $act->transport_method = $request->input('transport_method');
+        if ($request->has('departure_location')) $act->departure_location = $request->input('departure_location');
+        if ($request->has('arrival_destination')) $act->arrival_destination = $request->input('arrival_destination');
+        if ($request->has('length_time')) $act->length_time = $request->input('length_time');
+        if ($request->has('distance_km')) $act->distance_km = $request->input('distance_km');
         $act->acc_category = $request->input('acc_category') ?: null;
         $act->save();
 
@@ -3716,18 +5407,18 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     {
         $request->validate([
             'description' => 'required|string|max:255',
-            'cost'        => 'nullable|numeric|min:0',
-            'country'     => 'nullable|integer',
-            'vender'      => 'nullable|integer',
-            'category'    => 'nullable|integer',
+            'cost' => 'nullable|numeric|min:0',
+            'country' => 'nullable|integer',
+            'vender' => 'nullable|integer',
+            'category' => 'nullable|integer',
         ]);
 
         $rest = new \App\Models\Restaurant();
         $rest->description = $request->input('description');
-        $rest->cost        = $request->input('cost', 0);
-        $rest->country     = $request->input('country', 123);
-        $rest->vender      = $request->input('vender') ?: null;
-        $rest->category    = $request->input('category') ?: null;
+        $rest->cost = $request->input('cost', 0);
+        $rest->country = $request->input('country', 123);
+        $rest->vender = $request->input('vender') ?: null;
+        $rest->category = $request->input('category') ?: null;
         $rest->save();
 
         return response()->json(['success' => true, 'id' => $rest->id]);
@@ -3739,7 +5430,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     public function libraryDays(Request $request)
     {
         $search = trim($request->input('search', ''));
-        $days   = \App\Models\TourCannedDay::with('contents')->get();
+        $days = \App\Models\TourCannedDay::with('contents')->get();
 
         $fallbacks = [
             'linear-gradient(90deg,#73523e,#2a2230)',
@@ -3777,15 +5468,19 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $index = 0;
         foreach ($days as $day) {
             $enContent = $day->contents->firstWhere('lang', 'en') ?? $day->contents->first();
-            $title     = $enContent && trim($enContent->title) !== '' ? trim($enContent->title) : '(No title)';
+            $title = $enContent && trim($enContent->title) !== '' ? trim($enContent->title) : '(No title)';
 
-            if ($search && stripos($title, $search) === false) { $index++; continue; }
+            if ($search && stripos($title, $search) === false) {
+                $index++;
+                continue;
+            }
 
             // Build background
             $images = @unserialize($day->images);
-            if (!is_array($images)) $images = [];
+            if (!is_array($images))
+                $images = [];
             $firstImage = collect($images)->filter()->first();
-            $imageUrl   = '';
+            $imageUrl = '';
             if ($firstImage) {
                 $imageUrl = str_starts_with($firstImage, 'http') ? $firstImage : '/' . ltrim($firstImage, '/');
                 $imageUrl = str_replace([' ', "'"], ['%20', '%27'], $imageUrl);
@@ -3798,10 +5493,10 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             // Location from title
             $tl = strtolower($title);
             $place = str_contains($tl, 'petra') ? 'Petra'
-                : (str_contains($tl, 'amman')   ? 'Amman'
-                : (str_contains($tl, 'dead sea') ? 'Dead Sea'
-                : (str_contains($tl, 'wadi rum') ? 'Wadi Rum'
-                : (str_contains($tl, 'aqaba')    ? 'Aqaba' : 'Jordan'))));
+                : (str_contains($tl, 'amman') ? 'Amman'
+                    : (str_contains($tl, 'dead sea') ? 'Dead Sea'
+                        : (str_contains($tl, 'wadi rum') ? 'Wadi Rum'
+                            : (str_contains($tl, 'aqaba') ? 'Aqaba' : 'Jordan'))));
 
             // Language chips
             $langs = $day->contents->pluck('lang')->filter()->map(fn($l) => $l === 'Ar' ? 'AR' : strtoupper($l))->unique()->values();
@@ -3869,9 +5564,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                 $walker = $rootCat;
                 $knownRoots = [403, 93, 715, 456, 527];
                 while ($walker && !in_array($walker->id, $knownRoots)) {
-                    if (!$walker->parent_id) break;
+                    if (!$walker->parent_id)
+                        break;
                     $walker = ServiceCategory::find($walker->parent_id);
-                    if ($walker) $serviceTypeRootId = $walker->id;
+                    if ($walker)
+                        $serviceTypeRootId = $walker->id;
                 }
 
                 // For catId=93 (Activities): use 403 tree; for 403: use own tree
@@ -3938,11 +5635,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
                 if ($totalCount > 0 || $subCategories->count() > 0) {
                     $groupedServices[] = [
-                        'category'      => $rootCat,
-                        'services'      => $services,
-                        'total'         => $totalCount,
+                        'category' => $rootCat,
+                        'services' => $services,
+                        'total' => $totalCount,
                         'subCategories' => $subCategories,
-                        'type'          => $svcType,
+                        'type' => $svcType,
                     ];
                 }
             }
@@ -4035,11 +5732,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
                     // Detect service type for this root category
                     $svcTypeMap = [403 => 'accommodation', 93 => 'activity_section', 715 => 'transport_section', 456 => 'restaurant_section', 527 => 'guide'];
                     $groupedServices[] = [
-                        'category'      => $rootCat,
-                        'services'      => $services,
-                        'total'         => $totalCount,
+                        'category' => $rootCat,
+                        'services' => $services,
+                        'total' => $totalCount,
                         'subCategories' => $subCategories,
-                        'type'          => $svcTypeMap[$rootCat->id] ?? 'service',
+                        'type' => $svcTypeMap[$rootCat->id] ?? 'service',
                     ];
                 }
             }
@@ -4048,9 +5745,11 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         $cannedDays = collect();
         $totalDays = 0;
         if (!$categoryFilter || $categoryFilter === 'days') {
-            $daysQuery = \App\Models\TourCannedDay::with(['contents' => function($q) {
-                $q->where('lang', 'en');
-            }]);
+            $daysQuery = \App\Models\TourCannedDay::with([
+                'contents' => function ($q) {
+                    $q->where('lang', 'en');
+                }
+            ]);
             if ($search) {
                 $dayIds = \App\Models\TourCannedDayContent::where('lang', 'en')
                     ->where('title', 'like', '%' . $search . '%')
@@ -4078,7 +5777,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
     private function getAllDescendantIds($parentId, $countryId, $visited = [])
     {
         $ids = [];
-        if (in_array($parentId, $visited)) return $ids;
+        if (in_array($parentId, $visited))
+            return $ids;
         $visited[] = $parentId;
 
         $children = ServiceCategory::where('parent_id', $parentId)
@@ -4123,7 +5823,7 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
 
             $starCats = ServiceCategory::where('country_id', $countryId)
                 ->where('parent_id', 404) // Only under Hotels
-                ->where(function($q) use ($pattern1, $pattern2) {
+                ->where(function ($q) use ($pattern1, $pattern2) {
                     $q->where('name', $pattern1)->orWhere('name', $pattern2);
                 })->get();
 
@@ -4136,7 +5836,8 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
         } else {
             // Single hotel category
             $category = ServiceCategory::find($id);
-            if (!$id || !$category) return response()->json(['html' => '']);
+            if (!$id || !$category)
+                return response()->json(['html' => '']);
             $categoryIds = [$id];
         }
 
@@ -4178,36 +5879,78 @@ if(!window.Quill&&!document.getElementById("quill-js")){var s=document.createEle
             $html .= '<div style="border-radius:12px; overflow:hidden; border:1px solid #f0f0f0; box-shadow:0 2px 10px rgba(0,0,0,0.02);">';
             $html .= '<table style="width:100%; border-collapse:collapse; font-size:12px; font-family:\'Inter\', sans-serif;">';
             $html .= '<thead style="background:#f8f9fa; border-bottom:1px solid #eee;">';
-        $html .= '<tr>';
-        $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Description</th>';
-        $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Cost</th>';
-        $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Vendor</th>';
-        $html .= '<th style="text-align:right; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Actions</th>';
-        $html .= '</tr>';
-        $html .= '</thead>';
-        $html .= '<tbody style="background:#fff;">';
-        
-        foreach ($services as $svc) {
-            $venderName = $svc->venderUser ? ($svc->venderUser->company ?: $svc->venderUser->first_name . ' ' . $svc->venderUser->last_name) : 'N/A';
-            $html .= '<tr class="svc-row" data-vendor="' . ($svc->vender ?? '') . '" style="border-bottom:1px solid #f8f9fa;">';
-            $html .= '<td style="padding:15px; color:#2c3e50; font-weight:600; font-size:13px;">' . htmlspecialchars($svc->description) . '</td>';
-            $html .= '<td style="padding:15px; font-weight:700; font-size:13px; color:#2c3e50;">' . number_format($svc->cost, 2) . ' <span style="color:#2ecc71; font-weight:600; font-size:11px;">JOD</span></td>';
-            $html .= '<td style="padding:15px; color:#555; font-size:12px;">' . htmlspecialchars($venderName) . '</td>';
-            $html .= '<td style="padding:15px; text-align:right;">';
-            $html .= '<div style="display:inline-flex; gap:6px; align-items:center;">';
-            $html .= '<button type="button" onclick="openSeasons(' . $svc->id . ')" style="background:#fff8ef; color:#f39c12; border:none; padding:6px 12px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:5px;"><i class="fa fa-calendar"></i> Seasons</button>';
-            $html .= '<button type="button" onclick="editSvc(' . $svc->id . ')" style="background:#f0f7ff; color:#3498db; border:none; width:32px; height:32px; border-radius:8px; cursor:pointer;"><i class="fa fa-edit"></i></button>';
-            $html .= '<button type="button" onclick="delSvc(' . $svc->id . ', \'' . addslashes($svc->description) . '\')" style="background:#fff5f5; color:#e74c3c; border:none; width:32px; height:32px; border-radius:8px; cursor:pointer;"><i class="fa fa-trash"></i></button>';
-            $html .= '</div>';
-            $html .= '</td>';
+            $html .= '<tr>';
+            $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Description</th>';
+            $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Cost</th>';
+            $html .= '<th style="text-align:left; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Vendor</th>';
+            $html .= '<th style="text-align:right; padding:15px; color:#999; font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:0.5px;">Actions</th>';
             $html .= '</tr>';
-        }
-        $html .= '</tbody>';
-        $html .= '</table>';
-        $html .= '</div>';
+            $html .= '</thead>';
+            $html .= '<tbody style="background:#fff;">';
+
+            foreach ($services as $svc) {
+                $venderName = $svc->venderUser ? ($svc->venderUser->company ?: $svc->venderUser->first_name . ' ' . $svc->venderUser->last_name) : 'N/A';
+                $html .= '<tr class="svc-row" data-vendor="' . ($svc->vender ?? '') . '" style="border-bottom:1px solid #f8f9fa;">';
+                $html .= '<td style="padding:15px; color:#2c3e50; font-weight:600; font-size:13px;">' . htmlspecialchars($svc->description) . '</td>';
+                $html .= '<td style="padding:15px; font-weight:700; font-size:13px; color:#2c3e50;">' . number_format($svc->cost, 2) . ' <span style="color:#2ecc71; font-weight:600; font-size:11px;">JOD</span></td>';
+                $html .= '<td style="padding:15px; color:#555; font-size:12px;">' . htmlspecialchars($venderName) . '</td>';
+                $html .= '<td style="padding:15px; text-align:right;">';
+                $html .= '<div style="display:inline-flex; gap:6px; align-items:center;">';
+                $html .= '<button type="button" onclick="openSeasons(' . $svc->id . ')" style="background:#fff8ef; color:#f39c12; border:none; padding:6px 12px; border-radius:8px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:5px;"><i class="fa fa-calendar"></i> Seasons</button>';
+                $html .= '<button type="button" onclick="editSvc(' . $svc->id . ')" style="background:#f0f7ff; color:#3498db; border:none; width:32px; height:32px; border-radius:8px; cursor:pointer;"><i class="fa fa-edit"></i></button>';
+                $html .= '<button type="button" onclick="delSvc(' . $svc->id . ', \'' . addslashes($svc->description) . '\')" style="background:#fff5f5; color:#e74c3c; border:none; width:32px; height:32px; border-radius:8px; cursor:pointer;"><i class="fa fa-trash"></i></button>';
+                $html .= '</div>';
+                $html .= '</td>';
+                $html .= '</tr>';
+            }
+            $html .= '</tbody>';
+            $html .= '</table>';
+            $html .= '</div>';
         }
         $html .= '</div>';
 
+        return response()->json(['html' => $html]);
+    }
+    public function getVendorActivities($id)
+    {
+        $activities = \App\Models\Activity::where('vender', $id)->get(['id', 'description', 'cost']);
+        $services = \App\Models\Service::where('vender', $id)->get(['id', 'description', 'cost']);
+        $combined = $activities->merge($services)->values();
+        return response()->json($combined);
+    }
+    public function getVendorServices($id)
+    {
+        $services = \App\Models\Service::where('vender', $id)->orderBy('description')->get();
+        if ($services->isEmpty()) {
+            return response()->json(['html' => '']);
+        }
+        $csrf = csrf_token();
+        $html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+        $html .= '<span style="color:#e53e3e;font-size:11px;font-weight:800;letter-spacing:1px;">🇯🇴 SERVICES LIST</span>';
+        $html .= '<button type="button" onclick="toggleAccomAddForm()" style="background:#ea580c;border:none;color:#fff;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;"><i class="fa fa-plus"></i> Add Service</button>';
+        $html .= '</div>';
+        $html .= '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+        $html .= '<thead><tr style="border-bottom:1px solid #e2e8f0;">';
+        $html .= '<th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">DESCRIPTION</th>';
+        $html .= '<th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">COST</th>';
+        $html .= '<th style="text-align:left;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">VENDOR</th>';
+        $html .= '<th style="text-align:right;padding:6px 8px;font-size:10px;font-weight:700;color:#718096;letter-spacing:1px;">ACTIONS</th>';
+        $html .= '</tr></thead><tbody>';
+        foreach ($services as $svc) {
+            $vName = '-';
+            if ($svc->venderUser) {
+                $vName = !empty($svc->venderUser->company) ? strtoupper($svc->venderUser->company) : strtoupper(trim($svc->venderUser->first_name . ' ' . $svc->venderUser->last_name));
+            }
+            $html .= '<tr style="border-bottom:1px solid #f7fafc;">';
+            $html .= '<td style="padding:7px 8px;">' . htmlspecialchars($svc->description) . '</td>';
+            $html .= '<td style="padding:7px 8px;text-align:right;color:#ea580c;font-weight:700;">' . number_format($svc->cost, 2) . ' JOD</td>';
+            $html .= '<td style="padding:7px 8px;">' . htmlspecialchars($vName) . '</td>';
+            $html .= '<td style="padding:7px 8px;text-align:right;white-space:nowrap;">';
+            $html .= '<button onclick="editSvc(' . $svc->id . ')" style="background:#f0f4ff;border:none;color:#3b82f6;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:4px;"><i class="fa fa-pencil"></i></button>';
+            $html .= '<button onclick="delSvc(' . $svc->id . ',\'' . addslashes($svc->description) . '\')" style="background:#fff5f5;border:none;color:#e53e3e;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;"><i class="fa fa-trash"></i></button>';
+            $html .= '</td></tr>';
+        }
+        $html .= '</tbody></table>';
         return response()->json(['html' => $html]);
     }
 }

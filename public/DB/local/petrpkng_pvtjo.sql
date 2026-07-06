@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jul 02, 2026 at 11:14 AM
+-- Generation Time: Jul 04, 2026 at 04:37 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.5.1
 
@@ -109,6 +109,14 @@ CREATE TABLE `en33_activities` (
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `en33_activities`
+--
+
+INSERT INTO `en33_activities` (`id`, `description`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
+(1, 'Lunch', 0, 0, 215, 123, 0, '[\"uploads\\/services\\/1783093841_images.jpg\",null,null,null,\"uploads\\/services\\/1783094191_images4.jpg\",\"uploads\\/services\\/1783094191_images5.jpg\",\"uploads\\/services\\/1783094191_images.jpg\",null,null,\"uploads\\/services\\/1783094308_download.jpg\",\"uploads\\/services\\/1783094308_images1.jpg\"]', NULL, NULL, NULL, NULL, 'petra', NULL, NULL, NULL, NULL, NULL, '2026-07-03 04:10:52', '2026-07-03 10:28:28'),
+(2, 'rama add activity test', 0, 478, 93, 123, 0, '[\"a:2:{i:0;s:53:\\\"uploads\\/services\\/1783108873_6a4815092ef76_images5.jpg\\\";i:1;s:52:\\\"uploads\\/services\\/1783108873_6a4815092f444_images.jpg\\\";}\"]', NULL, NULL, '5 Star', NULL, 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-07-03 14:31:13', '2026-07-03 17:55:35');
 
 -- --------------------------------------------------------
 
@@ -22725,6 +22733,15 @@ CREATE TABLE `en33_restaurants` (
   `updated_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Dumping data for table `en33_restaurants`
+--
+
+INSERT INTO `en33_restaurants` (`id`, `description`, `cost`, `vender`, `category`, `country`, `restricted`, `image`, `notes`, `acc_type`, `acc_category`, `website`, `arrival`, `transport_method`, `departure_location`, `arrival_destination`, `length_time`, `distance_km`, `created_at`, `updated_at`) VALUES
+(1, 'Falcon Rock Hotel', 0, 218, 706, 123, 0, '[\"uploads\\/services\\/1783028286_download3.jpg\",\"uploads\\/services\\/1783113842_images.jpg\"]', 'jkljl,j trhfghfghfdhfdhfdghfghgfh nthtyujhtr', NULL, NULL, NULL, 'Jordan', NULL, NULL, NULL, NULL, NULL, '2026-07-02 12:28:08', '2026-07-03 16:03:05'),
+(2, 'rama resto', 0, 147, 0, 123, 0, NULL, 'dgdf', NULL, NULL, NULL, 'Amman', NULL, NULL, NULL, NULL, NULL, '2026-07-03 17:13:01', '2026-07-03 17:13:01'),
+(3, 'rama resto', 0, 147, 456, 123, 0, '[\"uploads\\/services\\/1783119148_6a483d2cc8ab4_images5.jpg\",\"uploads\\/services\\/1783119148_6a483d2cc8d6c_images.jpg\"]', NULL, NULL, NULL, NULL, 'Amman', NULL, NULL, NULL, NULL, NULL, '2026-07-03 17:22:28', '2026-07-03 17:56:46');
+
 -- --------------------------------------------------------
 
 --
@@ -26615,7 +26632,56 @@ INSERT INTO `en33_services` (`id`, `description`, `cost`, `vender`, `transport_m
 (4087, 'Airport amman/Petra', 85.00, 527, 'Car', 'Airport amman', 'Petra', '2:00', '80', 720, 123, 0),
 (4088, 'Wadi Rum/Queen Alia', 130.00, 527, 'Car', 'Wadi Rum', 'Queen Alia', '2:00', '80', 720, 123, 0),
 (4089, 'single room testing', 50.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0),
-(4090, 'RAMA ROOM', 100.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0);
+(4090, 'RAMA ROOM', 100.00, 692, NULL, NULL, NULL, NULL, NULL, 403, 123, 0),
+(4091, 'rama sk task', 100.00, 0, 'Bus', 'Amman', 'Jordan', '66', '70', 718, 123, 0),
+(4092, 'jkljl,j trhfghfghfdhfdhfdghfghgfh nthtyujhtr', 43.00, 0, NULL, NULL, NULL, NULL, NULL, 647, 123, 0),
+(4093, 'XXXXSSSSSS', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 328, 123, 0),
+(4094, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4095, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4096, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4097, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4098, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4099, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4100, 'Lunch Box', 5.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4101, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4102, 'Local guide - Full day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4103, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4104, 'Full Day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4105, 'Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4106, 'Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4107, 'Local guide - Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4108, 'Local guide - Mount Haroun', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4109, 'little Petra to Petra', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4110, 'Full Day in Petra', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4111, 'Little Petra to Monastery', 30.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4112, 'Local guide - Little Petra to Monastery', 40.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4113, 'Homestay Petra  - Alaa', 20.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4114, 'Local Guide - Little Petra', 15.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4115, 'Local Guide - Little Petra - Back Way', 40.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4116, 'transfer little petra to mesreh', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4117, 'Local Guide in little Petra', 10.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4118, 'Tour for 3h', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4119, 'Tour for Elder', 100.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4120, 'Tour for Elder and High place', 150.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4121, 'Hani Nawafleh Italian( English)  guide', 0.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4122, 'twin room in HB', 70.80, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4123, 'Double room in HB', 48.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4124, 'kitchen lesson', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4125, 'kitchen lesson', 35.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4126, 'Italian guide', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4127, 'RAMA TEST', 50.00, 0, NULL, NULL, NULL, NULL, NULL, 494, 123, 0),
+(4128, 'RAMA LUNCH', 0.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4129, 'RAMA LUNCH', 70.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4130, 'rama xyz', 90.00, 0, NULL, NULL, NULL, NULL, NULL, 215, 123, 0),
+(4131, 'Jeep tour - 2 Hours', 25.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4132, 'Jeep tour - 3 Hours', 40.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4133, 'Jeep tour - 4 Hours', 50.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4134, 'Lunch box - Wadi Rum', 5.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4135, 'Jeep tour - 5 Hours', 60.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4136, 'Jeep tour -  6 Hours', 60.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4137, 'Camel Ride - 1 hour', 30.00, 246, NULL, NULL, NULL, NULL, NULL, 93, 123, 0),
+(4138, 'hello rama', 88.00, 246, NULL, NULL, NULL, NULL, NULL, 478, 123, 0),
+(4139, 'hello ra', 33.00, 147, NULL, NULL, NULL, NULL, NULL, 147, 123, 0);
 
 -- --------------------------------------------------------
 
@@ -26686,7 +26752,7 @@ INSERT INTO `en33_services_categories` (`id`, `name`, `parent_id`, `country_id`,
 (195, 'Marina Plaza Hotel', 426, 123, NULL, NULL, NULL, NULL),
 (198, 'Grand Tala Bay Aqaba', 430, 123, NULL, NULL, NULL, NULL),
 (199, 'Movenpick Resort and Residences', 430, 123, NULL, NULL, NULL, NULL),
-(204, 'Testing', 0, 123, NULL, NULL, NULL, NULL),
+(204, 'Activities in jordan', 0, 123, NULL, NULL, NULL, NULL),
 (212, 'Ibraheem Al-Amarat', 455, 123, NULL, NULL, NULL, NULL),
 (214, 'Jeep Tour', 204, 123, NULL, NULL, NULL, NULL),
 (215, 'Lunch', 204, 123, NULL, NULL, NULL, NULL),
@@ -35328,7 +35394,7 @@ ALTER TABLE `en33_accommodations`
 -- AUTO_INCREMENT for table `en33_activities`
 --
 ALTER TABLE `en33_activities`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `en33_cities`
@@ -35406,13 +35472,13 @@ ALTER TABLE `en33_pages`
 -- AUTO_INCREMENT for table `en33_restaurants`
 --
 ALTER TABLE `en33_restaurants`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `en33_services`
 --
 ALTER TABLE `en33_services`
-  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4091;
+  MODIFY `id` int(10) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4140;
 
 --
 -- AUTO_INCREMENT for table `en33_services_categories`

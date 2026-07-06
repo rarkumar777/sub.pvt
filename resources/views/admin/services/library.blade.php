@@ -449,7 +449,7 @@ function confirmDel(){
 }
 function closeDelModal(){document.getElementById('delModal').style.display='none'; delId=null;}
 
-function showModal(t){document.getElementById('libModalHead').innerHTML='<h3 id="libModalTitle">'+t+'</h3><button class="lib-modal-close" onclick="closeModal()"><i class="fa fa-times"></i></button>'; document.getElementById('libModalBody').innerHTML='<div style="text-align:center;padding:30px"><i class="fa fa-spinner fa-spin" style="font-size:24px;color:#ea580c"></i></div>'; document.getElementById('libModal').style.display='flex';}
+function showModal(t){window.accEditDt = new DataTransfer(); document.getElementById('libModalHead').innerHTML='<h3 id="libModalTitle">'+t+'</h3><button class="lib-modal-close" onclick="closeModal()"><i class="fa fa-times"></i></button>'; document.getElementById('libModalBody').innerHTML='<div style="text-align:center;padding:30px"><i class="fa fa-spinner fa-spin" style="font-size:24px;color:#ea580c"></i></div>'; document.getElementById('libModal').style.display='flex';}
 function closeModal(){document.getElementById('libModal').style.display='none'; document.getElementById('libModalBody').innerHTML=''; document.getElementById('libModalHead').innerHTML='<h3 id="libModalTitle"></h3><button class="lib-modal-close" onclick="closeModal()"><i class="fa fa-times"></i></button>'; var d=document.getElementById('libAccDropdownFixed'); if(d){d.style.display='none';d.innerHTML='';} }
 function closeMenus(){document.querySelectorAll('.lib-dropdown').forEach(function(m){m.style.display='none'});}
 
@@ -602,26 +602,54 @@ function renderSvcImageGrid(input) {
     }
 }
 
+window.accEditDt = new DataTransfer();
+
 function addAccImages(input) {
     if(input.files && input.files.length > 0){
-        var row = document.getElementById('catPhotosRow') || document.getElementById('accPhotosRow');
-        if(!row) return;
-        var addBtn = row.lastElementChild;
-        
         for(var i=0; i<input.files.length; i++){
+            window.accEditDt.items.add(input.files[i]);
+        }
+    }
+    input.files = window.accEditDt.files;
+    renderAccImages(input);
+}
+
+window.renderAccImages = function(input) {
+    var row = document.getElementById('catPhotosRow') || document.getElementById('accPhotosRow');
+    if(!row) return;
+    var addBtn = row.lastElementChild;
+    
+    var exisitingNew = row.querySelectorAll('.new-acc-photo-wrap');
+    exisitingNew.forEach(function(e) { e.remove(); });
+    
+    for(var i=0; i<window.accEditDt.files.length; i++){
+        (function(idx) {
             var reader = new FileReader();
             reader.onload = function(e){
                 var div = document.createElement('div');
-                div.className = 'acc-photo-wrap';
+                div.className = 'acc-photo-wrap new-acc-photo-wrap';
                 div.style.cssText = 'position:relative;flex-shrink:0;height:104px;';
                 div.innerHTML = '<img src="' + e.target.result + '" style="height:100%;border-radius:4px;object-fit:cover;">' +
-                                '<button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
+                                '<button type="button" onclick="removeAccNewImg(' + idx + ', \'' + input.id + '\')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;">✕</button>';
                 row.insertBefore(div, addBtn);
             };
-            reader.readAsDataURL(input.files[i]);
-        }
+            reader.readAsDataURL(window.accEditDt.files[idx]);
+        })(i);
     }
-}
+};
+
+window.removeAccNewImg = function(idx, inputId) {
+    var newDt = new DataTransfer();
+    for(var i=0; i<window.accEditDt.files.length; i++){
+        if(i !== idx) newDt.items.add(window.accEditDt.files[i]);
+    }
+    window.accEditDt = newDt;
+    var input = document.getElementById(inputId);
+    if(input) {
+        input.files = window.accEditDt.files;
+        renderAccImages(input);
+    }
+};
 
 function addActImages(input) {
     if(input.files && input.files.length > 0){

@@ -1,0 +1,1 @@
+<?php require __DIR__.'/vendor/autoload.php'; \ = require_once __DIR__.'/bootstrap/app.php'; \ = \->make(Illuminate\Contracts\Console\Kernel::class); \->bootstrap(); \ = \App\Models\User::where('user_group', 'supplier')->get(['id', 'first_name', 'last_name', 'company'])->toArray(); echo json_encode(\);

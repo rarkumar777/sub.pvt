@@ -240,7 +240,7 @@
         } else {
             $displayStyle = 'flex';
         }
-        $img = $service->image;
+        $img = $isGuide ? ($service->arrival_destination ?? null) : $service->image;
         if($img){
             $decoded = @json_decode($img, true);
             $img = is_array($decoded) ? $decoded[0] : $img;
@@ -248,6 +248,8 @@
         // If it's an accommodation and no image, use a white transparent box or none to match screenshot
         if ($isAccom && !$img) {
             $imgUrl = ''; // We will handle empty image in html
+        } elseif ($isGuide && !$img) {
+            $imgUrl = ''; // Guide with no image — show placeholder
         } else {
             $imgUrl = $img ? ((str_starts_with($img, 'http')) ? $img : '/' . ltrim($img, '/')) : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=100&h=100&fit=crop';
         }

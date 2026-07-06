@@ -50,7 +50,7 @@
                 }
             }
         @endphp
-        
+
         @if(count($images) > 0)
             @foreach($images as $img)
                 @php $imgUrl = str_starts_with($img, 'http') ? $img : asset(ltrim($img, '/')); @endphp
@@ -107,8 +107,8 @@
                 <td class="tw-py-4 tw-px-6 tw-text-[13px] tw-font-bold tw-text-slate-700">{{ $service->description }}</td>
                 <td class="tw-py-4 tw-px-6 tw-text-[13px] tw-font-black tw-text-emerald-600">{{ number_format($service->cost, 2) }} <span class="tw-text-[10px] tw-text-emerald-500/70 tw-uppercase">JOD</span></td>
                 <td class="tw-py-4 tw-px-6 tw-text-[13px] tw-font-semibold tw-text-slate-500">
-                    @if($service->venderUser)
-                        {{ !empty($service->venderUser->company) ? $service->venderUser->company : $service->venderUser->email }}
+                    @if(!empty($service->display_vendor_name))
+                        {{ $service->display_vendor_name }}
                     @else
                         <span class="tw-px-2 tw-py-1 tw-rounded-md tw-bg-slate-100 tw-text-[10px] tw-font-bold tw-text-slate-400">N/A</span>
                     @endif

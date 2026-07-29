@@ -1,0 +1,10 @@
+[23-Jun-2026 14:59:22 UTC] PHP Warning:  require(/home/petrpkng/sup.pvt.jo/vendor/autoload.php): Failed to open stream: No such file or directory in /home/petrpkng/sup.pvt.jo/artisan on line 10
+[23-Jun-2026 14:59:22 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/petrpkng/sup.pvt.jo/vendor/autoload.php' (include_path='.:/opt/alt/php84/usr/share/pear:/opt/alt/php84/usr/share/php:/usr/share/pear:/usr/share/php') in /home/petrpkng/sup.pvt.jo/artisan:10
+Stack trace:
+#0 {main}
+  thrown in /home/petrpkng/sup.pvt.jo/artisan on line 10
+[23-Jun-2026 15:00:25 UTC] PHP Warning:  require(/home/petrpkng/sup.pvt.jo/vendor/autoload.php): Failed to open stream: No such file or directory in /home/petrpkng/sup.pvt.jo/artisan on line 10
+[23-Jun-2026 15:00:25 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/petrpkng/sup.pvt.jo/vendor/autoload.php' (include_path='.:/opt/alt/php84/usr/share/pear:/opt/alt/php84/usr/share/php:/usr/share/pear:/usr/share/php') in /home/petrpkng/sup.pvt.jo/artisan:10
+Stack trace:
+#0 {main}
+  thrown in /home/petrpkng/sup.pvt.jo/artisan on line 10

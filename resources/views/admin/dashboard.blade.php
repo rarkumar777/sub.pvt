@@ -13,7 +13,7 @@
             </div>
             <div>
                 <h1 class="tw-text-3xl tw-font-black tw-text-slate-900 tw-tracking-tight tw-m-0"
-                    style="color:red !important">Dashboard</h1>
+                    style="color:blue !important">Dashboard</h1>
                 <p class="tw-text-slate-400 tw-text-sm tw-font-medium tw-mt-1">Welcome back! Here's your system overview.
                 </p>
             </div>
